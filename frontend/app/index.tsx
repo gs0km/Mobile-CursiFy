@@ -147,6 +147,13 @@ export default function Index() {
       setFeedback(error.message);
       return;
     }
+    
+    if (error instanceof Error) {
+      setFeedback(error.message);
+      return;
+    }
+    
+    // Fallback para tipos desconhecidos
     setFeedback("Não foi possível concluir a ação. Tente novamente.");
   };
 

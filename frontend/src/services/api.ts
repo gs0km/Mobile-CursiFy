@@ -10,7 +10,7 @@ import {
 } from "../types";
 
 interface ApiErrorPayload {
-  detail?: string;
+  detail?: string | Array<{ msg?: string; loc?: (string | number)[] }>;
   message?: string;
 }
 
@@ -33,9 +33,25 @@ async function parseApiError(response: Response): Promise<never> {
   let message = "Erro inesperado na API.";
   try {
     const payload = (await response.json()) as ApiErrorPayload;
-    message = payload.detail ?? payload.message ?? message;
-  } catch {
-    message = response.statusText || message;
+    
+    // Se detail for uma string, use-a
+    if (typeof payload.detail === "string") {
+      message = payload.detail;
+    }
+    // Se detail for um array (erros de validação do Pydantic), extraia as mensagens
+    else if (Array.isArray(payload.detail)) {
+      const errors = payload.detail
+        .map((err) => err.msg || "Erro de validação")
+        .join("; ");
+      message = errors || message;
+    }
+    // Fallback para message
+    else if (payload.message) {
+      message = payload.message;
+    }
+  } catch (jsonError) {
+    // Se não conseguir fazer parse do JSON, use o statusText
+    message = response.statusText || `Erro HTTP ${response.status}`;
   }
   throw new ApiError(message);
 }
