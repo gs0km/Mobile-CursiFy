@@ -1,47 +1,74 @@
-/**
- * courseService.ts — Serviço de cursos.
- *
- * CRUD completo:
- *   getAll    → lista todos os cursos (público)
- *   getById   → detalhe de um curso (público)
- *   create    → cria curso (teacher/admin)
- *   update    → atualiza curso (teacher/admin) — endpoint reservado para expansão
- *   remove    → exclui curso (teacher/admin)
- *
- * Funções específicas:
- *   getProfessorCourses → cursos do professor autenticado
- */
-import { api } from "./api";
+﻿import { api } from "./api";
 import { Course, CreateCoursePayload } from "../types";
 
-const COURSES = "/courses";
+interface BackendCourse {
+  id: number;
+  nome: string;
+  descricao: string;
+  categoria: string;
+  cargaHoraria: number;
+  dataCriacao: string;
+  statusCurso: string | boolean;
+}
+
+function isCourseActive(status: BackendCourse["statusCurso"]) {
+  return status === true || status === "Ativo";
+}
+
+function normalizeLevel(category: string): Course["level"] {
+  if (category?.includes("MEDIO")) return "intermediate";
+  return "beginner";
+}
+
+function mapCourse(course: BackendCourse): Course {
+  return {
+    course_id: String(course.id),
+    teacher_id: "",
+    teacher_name: "Professor CursiFy",
+    title: course.nome,
+    category: course.categoria,
+    description: course.descricao,
+    pedagogy_description: course.descricao,
+    level: normalizeLevel(course.categoria),
+    lessons_count: 0,
+    estimated_hours: Number(course.cargaHoraria) || 0,
+    thumbnail_base64: "",
+    enrolled_count: 0,
+    created_at: course.dataCriacao ?? new Date().toISOString(),
+  };
+}
 
 const courseService = {
-  /** Lista todos os cursos. Aceita filtro opcional por categoria. */
   getAll: (category?: string) =>
     api
-      .get<Course[]>(COURSES, { params: category ? { category } : undefined })
-      .then((r) => r.data),
+      .get<BackendCourse[]>("/curso")
+      .then((response) => response.data
+        .filter((course) => isCourseActive(course.statusCurso))
+        .map(mapCourse)
+        .filter((course) => !category || course.category === category)),
 
-  /** Retorna detalhes de um curso pelo ID. */
   getById: (courseId: string) =>
-    api.get<Course>(`${COURSES}/${courseId}`).then((r) => r.data),
+    api.get<BackendCourse>(`/curso/${courseId}`).then((response) => mapCourse(response.data)),
 
-  /** Cria um novo curso. Requer token de teacher ou admin (injetado automaticamente). */
   create: (payload: CreateCoursePayload) =>
-    api.post<Course>(COURSES, payload).then((r) => r.data),
+    api
+      .post<BackendCourse>("/curso", {
+        nome: payload.title,
+        descricao: payload.description,
+        categoria: payload.category,
+        cargaHoraria: payload.estimated_hours,
+        dataCriacao: new Date().toISOString(),
+        statusCurso: "Ativo",
+      })
+      .then((response) => mapCourse(response.data)),
 
-  /** Atualiza um curso existente. Reservado para expansão futura. */
   update: (_courseId: string, _payload: Partial<CreateCoursePayload>): Promise<Course> =>
-    Promise.reject(new Error("Endpoint não implementado.")),
+    Promise.reject(new Error("Endpoint nao implementado.")),
 
-  /** Exclui um curso pelo ID. Requer token de teacher (próprio) ou admin. */
   remove: (courseId: string) =>
-    api.delete<void>(`${COURSES}/${courseId}`).then(() => undefined),
+    api.delete<void>(`/curso/${courseId}`).then(() => undefined),
 
-  /** Lista os cursos do professor autenticado (ou todos, se admin). */
-  getProfessorCourses: () =>
-    api.get<Course[]>("/professor/courses").then((r) => r.data),
+  getProfessorCourses: () => courseService.getAll(),
 };
 
 export default courseService;
