@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { theme } from "../constants/theme";
 import adminService from "../services/adminService";
-import { AdminOverview, User } from "../types";
+import courseService from "../services/courseService";
+import { AdminOverview, Course, User } from "../types";
 
 interface AdminScreenProps {
   isAdmin: boolean;
@@ -23,12 +24,21 @@ export function AdminScreen({ isAdmin, data }: AdminScreenProps) {
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   useEffect(() => {
     if (!isAdmin) return;
     setLoadingUsers(true);
     adminService.getUsers()
       .then(setUsers)
       .finally(() => setLoadingUsers(false));
+
+    setLoadingCourses(true);
+    courseService.getAll()
+      .then(setCourses)
+      .finally(() => setLoadingCourses(false));
   }, [isAdmin]);
 
   const handleToggle = async (user: User) => {
@@ -38,6 +48,16 @@ export function AdminScreen({ isAdmin, data }: AdminScreenProps) {
       setUsers((prev) => prev.map((u) => u.user_id === updated.user_id ? updated : u));
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  const handleDeleteCourse = async (courseId: string) => {
+    setDeletingId(courseId);
+    try {
+      await courseService.remove(courseId);
+      setCourses((prev) => prev.filter((c) => c.course_id !== courseId));
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -51,7 +71,7 @@ export function AdminScreen({ isAdmin, data }: AdminScreenProps) {
   }
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: theme.spacing.l }}>
       <Text style={styles.title}>Painel administrativo</Text>
 
       {data && (
@@ -65,36 +85,50 @@ export function AdminScreen({ isAdmin, data }: AdminScreenProps) {
         </View>
       )}
 
-      <Text style={styles.sectionTitle}>Usuários cadastrados</Text>
+      <Text style={styles.sectionTitle}>Cursos ativos</Text>
+      {loadingCourses ? (
+        <ActivityIndicator color={theme.colors.primary} style={{ marginTop: theme.spacing.m }} />
+      ) : courses.map((course) => (
+        <View key={course.course_id} style={styles.row}>
+          <View style={styles.rowInfo}>
+            <Text style={styles.rowName} numberOfLines={1}>{course.title}</Text>
+            <Text style={styles.rowMeta}>{course.category} • {course.teacher_name}</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.btnDelete]}
+            onPress={() => handleDeleteCourse(course.course_id)}
+            disabled={deletingId === course.course_id}
+          >
+            {deletingId === course.course_id
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <Text style={styles.actionText}>Apagar</Text>
+            }
+          </TouchableOpacity>
+        </View>
+      ))}
 
+      <Text style={styles.sectionTitle}>Usuários cadastrados</Text>
       {loadingUsers ? (
-        <ActivityIndicator color={theme.colors.primary} style={{ marginTop: theme.spacing.l }} />
-      ) : (
-        <FlatList
-          data={users}
-          keyExtractor={(u) => u.user_id}
-          contentContainerStyle={{ paddingBottom: theme.spacing.l }}
-          renderItem={({ item }) => (
-            <View style={styles.userRow}>
-              <View style={styles.userInfo}>
-                <Text style={styles.userName}>{item.username}</Text>
-                <Text style={styles.userMeta}>{item.email} • {item.role}</Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.toggleBtn, item.active ? styles.btnActive : styles.btnInactive]}
-                onPress={() => handleToggle(item)}
-                disabled={togglingId === item.user_id}
-              >
-                {togglingId === item.user_id
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={styles.toggleText}>{item.active ? "Inativar" : "Ativar"}</Text>
-                }
-              </TouchableOpacity>
-            </View>
-          )}
-        />
-      )}
-    </View>
+        <ActivityIndicator color={theme.colors.primary} style={{ marginTop: theme.spacing.m }} />
+      ) : users.map((item) => (
+        <View key={item.user_id} style={styles.row}>
+          <View style={styles.rowInfo}>
+            <Text style={styles.rowName}>{item.username}</Text>
+            <Text style={styles.rowMeta}>{item.email} • {item.role}</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.actionBtn, item.active ? styles.btnActive : styles.btnInactive]}
+            onPress={() => handleToggle(item)}
+            disabled={togglingId === item.user_id}
+          >
+            {togglingId === item.user_id
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <Text style={styles.actionText}>{item.active ? "Inativar" : "Ativar"}</Text>
+            }
+          </TouchableOpacity>
+        </View>
+      ))}
+    </ScrollView>
   );
 }
 
@@ -123,11 +157,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     marginTop: theme.spacing.l,
     marginBottom: theme.spacing.m,
-    fontSize: theme.typography.h3 ?? 16,
+    fontSize: 16,
     fontWeight: "700",
     color: theme.colors.textMain,
   },
-  userRow: {
+  row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -135,17 +169,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
-  userInfo: { flex: 1, marginRight: theme.spacing.m },
-  userName: { fontWeight: "600", color: theme.colors.textMain, fontSize: theme.typography.body },
-  userMeta: { color: theme.colors.textMuted, fontSize: theme.typography.small, marginTop: 2 },
-  toggleBtn: {
+  rowInfo: { flex: 1, marginRight: theme.spacing.m },
+  rowName: { fontWeight: "600", color: theme.colors.textMain, fontSize: theme.typography.body },
+  rowMeta: { color: theme.colors.textMuted, fontSize: theme.typography.small, marginTop: 2 },
+  actionBtn: {
     paddingHorizontal: theme.spacing.m,
     paddingVertical: theme.spacing.s,
     borderRadius: theme.radius.full,
     minWidth: 80,
     alignItems: "center",
   },
+  btnDelete: { backgroundColor: "#ef4444" },
   btnActive: { backgroundColor: "#ef4444" },
   btnInactive: { backgroundColor: "#22c55e" },
-  toggleText: { color: "#fff", fontWeight: "600", fontSize: theme.typography.small },
+  actionText: { color: "#fff", fontWeight: "600", fontSize: theme.typography.small },
 });
