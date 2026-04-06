@@ -11,7 +11,7 @@ import Constants from "expo-constants";
 // ─── Base URL ─────────────────────────────────────────────────────────────────
 
 const appConfig = Constants.expoConfig;
-const fallbackUrl = process.env.EXPO_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+const fallbackUrl = process.env.EXPO_PUBLIC_BACKEND_URL ?? "http://localhost:8080";
 const rawBaseUrl =
   (appConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string | undefined) ?? fallbackUrl;
 
