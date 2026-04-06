@@ -125,7 +125,7 @@ export default function Index() {
     try {
       const [catalog, enrollments, teacher, admin] = await Promise.all([
         courseService.getAll(),
-        enrollmentService.getAll(),
+        enrollmentService.getAll(nextUser.user_id),
         nextUser.role === "teacher" || nextUser.role === "admin"
           ? courseService.getProfessorCourses()
           : Promise.resolve([] as Course[]),
@@ -173,6 +173,7 @@ export default function Index() {
         bio: response.user.bio,
         profile_image_base64: response.user.profile_image_base64,
         created_at: response.user.created_at,
+        active: response.user.active,
       };
       await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ token: response.access_token, user: sessionUser }));
       await loadInitialData(response.user);
@@ -257,7 +258,7 @@ export default function Index() {
     setBusy(true);
     setFeedback("");
     try {
-      await enrollmentService.create(selectedCourse.course_id);
+      await enrollmentService.create(user.user_id, selectedCourse.course_id);
       setFeedback("Inscrição confirmada com sucesso!");
       await loadInitialData(user);
       setSelectedCourse(await courseService.getById(selectedCourse.course_id));
@@ -285,6 +286,7 @@ export default function Index() {
         bio: updated.bio,
         profile_image_base64: updated.profile_image_base64,
         created_at: updated.created_at,
+        active: updated.active,
       };
       await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ token, user: updatedUser }));
       setAuthToken(token);

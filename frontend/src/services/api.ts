@@ -1,13 +1,20 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
+﻿import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
+import { Platform } from "react-native";
 
-const rawBaseUrl = process.env.EXPO_PUBLIC_BACKEND_URL ?? "http://localhost:8080";
+const defaultHost = Platform.OS === "android" ? "http://10.0.2.2:8080" : "http://localhost:8080";
+const rawBaseUrl = process.env.EXPO_PUBLIC_BACKEND_URL ?? defaultHost;
 const trimmed = rawBaseUrl.endsWith("/") ? rawBaseUrl.slice(0, -1) : rawBaseUrl;
-export const BASE_URL = trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
+
+export const BASE_URL = trimmed.endsWith("/api/v1") ? trimmed : `${trimmed}/api/v1`;
 
 let _token: string | null = null;
 
 export function setAuthToken(token: string | null) {
   _token = token;
+}
+
+export function getAuthToken() {
+  return _token;
 }
 
 export const api = axios.create({
@@ -17,7 +24,10 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  if (_token) config.headers.set("Authorization", `Bearer ${_token}`);
+  if (_token) {
+    config.headers.set("Authorization", `Bearer ${_token}`);
+  }
+
   return config;
 });
 
@@ -37,15 +47,15 @@ api.interceptors.response.use(
     if (typeof data?.detail === "string") {
       message = data.detail;
     } else if (Array.isArray(data?.detail)) {
-      message = data.detail.map((e) => e.msg ?? "Erro de validação").join("; ");
-    } else if (data?.message) {
+      message = data.detail.map((entry) => entry.msg ?? "Erro de validacao").join("; ");
+    } else if (typeof data?.message === "string") {
       message = data.message;
     } else if (error.code === "ERR_NETWORK" || !error.response) {
-      message = "Não foi possível conectar ao servidor.";
+      message = "Nao foi possivel conectar ao servidor.";
     } else if (typeof error.message === "string") {
       message = error.message;
     }
 
     return Promise.reject(new ApiError(message, error.response?.status));
-  }
+  },
 );

@@ -39,6 +39,8 @@ export function AuthScreen(props: AuthScreenProps) {
   const [registerBio, setRegisterBio] = useState("");
   const [registerLoading, setRegisterLoading] = useState(false);
   const [registerError, setRegisterError] = useState("");
+  const [loginEmailValue, setLoginEmailValue] = useState(loginEmail);
+  const [loginPasswordValue, setLoginPasswordValue] = useState(loginPassword);
 
   const roleOptions: UserRole[] = ["student", "teacher", "admin"];
 
@@ -118,19 +120,30 @@ export function AuthScreen(props: AuthScreenProps) {
               placeholder="voce@exemplo.com"
               keyboardType="email-address"
               autoCapitalize="none"
-              value={loginEmail}
-              onChangeText={setLoginEmail}
+              value={loginEmailValue}
+              onChangeText={(value) => {
+                setLoginEmailValue(value);
+                setLoginEmail(value);
+              }}
               testID="login-email"
             />
             <AppInput
               label="Senha"
               placeholder="******"
               secureTextEntry
-              value={loginPassword}
-              onChangeText={setLoginPassword}
+              value={loginPasswordValue}
+              onChangeText={(value) => {
+                setLoginPasswordValue(value);
+                setLoginPassword(value);
+              }}
               testID="login-password"
             />
-            <AppButton label="Acessar" onPress={onLogin} loading={loading} testID="login-submit" />
+            <AppButton
+              label="Acessar"
+              onPress={() => onLoginWithCredentials(loginEmailValue, loginPasswordValue)}
+              loading={loading}
+              testID="login-submit"
+            />
           </View>
         ) : (
           <View style={styles.card}>
