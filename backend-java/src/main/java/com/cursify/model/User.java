@@ -11,10 +11,11 @@ public class User {
     @Indexed(unique = true) private String email;
     @Indexed(unique = true) private String username;
     private String passwordHash;
-    private String role; // student, teacher, admin
+    private String role;
     private String bio = "";
     private String profileImageBase64 = "";
     private String createdAt;
+    private boolean active = true;
 
     public String getId() { return id; }
     public String getUserId() { return userId; }
@@ -33,4 +34,6 @@ public class User {
     public void setProfileImageBase64(String profileImageBase64) { this.profileImageBase64 = profileImageBase64; }
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
+    public boolean isActive() { return active; }
+    public void setActive(boolean active) { this.active = active; }
 }

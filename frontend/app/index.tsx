@@ -154,17 +154,27 @@ export default function Index() {
   };
 
   // ─── Auth ──────────────────────────────────────────────────────────────────
-  const handleLogin = async () => {
+  const handleLogin = async (email?: string, password?: string) => {
+    const emailToUse = email ?? loginEmail.trim();
+    const passwordToUse = password ?? loginPassword;
     setBusy(true);
     setFeedback("");
     try {
-      // authService.login consome POST /api/auth/login e retorna { access_token, user }
-      const response = await authService.login({ email: loginEmail.trim(), password: loginPassword });
+      const response = await authService.login({ email: emailToUse, password: passwordToUse });
       setToken(response.access_token);
       setUser(response.user);
       setAuthToken(response.access_token);
       setActiveTab("catalog");
-      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ token: response.access_token, user: response.user }));
+      const sessionUser = {
+        user_id: response.user.user_id,
+        email: response.user.email,
+        username: response.user.username,
+        role: response.user.role,
+        bio: response.user.bio,
+        profile_image_base64: response.user.profile_image_base64,
+        created_at: response.user.created_at,
+      };
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ token: response.access_token, user: sessionUser }));
       await loadInitialData(response.user);
       setFeedback(`Bem-vindo, ${response.user.username}!`);
     } catch (error) {
@@ -267,7 +277,16 @@ export default function Index() {
     try {
       const updated = await authService.update(payload);
       setUser(updated);
-      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ token, user: updated }));
+      const updatedUser = {
+        user_id: updated.user_id,
+        email: updated.email,
+        username: updated.username,
+        role: updated.role,
+        bio: updated.bio,
+        profile_image_base64: updated.profile_image_base64,
+        created_at: updated.created_at,
+      };
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ token, user: updatedUser }));
       setAuthToken(token);
       setFeedback("Perfil atualizado com sucesso.");
     } catch (error) {
@@ -365,6 +384,7 @@ export default function Index() {
           loginEmail={loginEmail} setLoginEmail={setLoginEmail}
           loginPassword={loginPassword} setLoginPassword={setLoginPassword}
           onLogin={handleLogin}
+          onLoginWithCredentials={(email, password) => handleLogin(email, password)}
           loading={busy} feedback={feedback}
         />
       ) : (

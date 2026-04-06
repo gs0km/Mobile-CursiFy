@@ -18,7 +18,8 @@ public class Dtos {
         @JsonProperty("user_id") String userId,
         String email, String username, String role, String bio,
         @JsonProperty("profile_image_base64") String profileImageBase64,
-        @JsonProperty("created_at") String createdAt
+        @JsonProperty("created_at") String createdAt,
+        boolean active
     ) {}
 
     public record LoginResponse(

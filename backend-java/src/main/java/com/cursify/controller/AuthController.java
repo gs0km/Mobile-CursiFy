@@ -80,6 +80,6 @@ public class AuthController {
 
     private UserResponse toResponse(User u) {
         return new UserResponse(u.getUserId(), u.getEmail(), u.getUsername(),
-            u.getRole(), u.getBio(), u.getProfileImageBase64(), u.getCreatedAt());
+            u.getRole(), u.getBio(), u.getProfileImageBase64(), u.getCreatedAt(), u.isActive());
     }
 }

@@ -82,6 +82,35 @@ public class OtherControllers {
         ));
     }
 
+    // GET /api/admin/users
+    @GetMapping("/admin/users")
+    public ResponseEntity<List<UserResponse>> adminUsers(@AuthenticationPrincipal User user) {
+        if (!user.getRole().equals("admin"))
+            throw new ApiException("Você não tem permissão para esta ação.", HttpStatus.FORBIDDEN);
+        return ResponseEntity.ok(userRepo.findAll().stream().map(this::toUserResponse).toList());
+    }
+
+    // PATCH /api/admin/users/{userId}/status
+    @PatchMapping("/admin/users/{userId}/status")
+    public ResponseEntity<UserResponse> toggleUserStatus(
+        @AuthenticationPrincipal User admin,
+        @PathVariable String userId,
+        @RequestBody java.util.Map<String, Boolean> body
+    ) {
+        if (!admin.getRole().equals("admin"))
+            throw new ApiException("Você não tem permissão para esta ação.", HttpStatus.FORBIDDEN);
+        User target = userRepo.findByUserId(userId)
+            .orElseThrow(() -> new ApiException("Usuário não encontrado.", HttpStatus.NOT_FOUND));
+        target.setActive(body.getOrDefault("active", true));
+        userRepo.save(target);
+        return ResponseEntity.ok(toUserResponse(target));
+    }
+
+    private UserResponse toUserResponse(User u) {
+        return new UserResponse(u.getUserId(), u.getEmail(), u.getUsername(),
+            u.getRole(), u.getBio(), u.getProfileImageBase64(), u.getCreatedAt(), u.isActive());
+    }
+
     private CourseResponse toCourseResponse(Course c) {
         return new CourseResponse(c.getCourseId(), c.getTeacherId(), c.getTeacherName(),
             c.getTitle(), c.getCategory(), c.getDescription(), c.getPedagogyDescription(),

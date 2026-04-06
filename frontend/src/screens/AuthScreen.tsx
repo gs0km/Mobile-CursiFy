@@ -1,6 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AppButton } from "../components/AppButton";
 import { AppInput } from "../components/AppInput";
 import { theme } from "../constants/theme";
@@ -16,16 +15,13 @@ interface AuthScreenProps {
   loginPassword: string;
   setLoginPassword: (value: string) => void;
   onLogin: () => void;
+  onLoginWithCredentials: (email: string, password: string) => void;
   loading: boolean;
   feedback: string;
 }
 
-/** Valida senha: 8-20 caracteres, com letras e números */
 function validatePassword(password: string): boolean {
-  const hasLetters = /[a-zA-Z]/.test(password);
-  const hasNumbers = /\d/.test(password);
-  const validLength = password.length >= 8 && password.length <= 20;
-  return hasLetters && hasNumbers && validLength;
+  return /[a-zA-Z]/.test(password) && /\d/.test(password) && password.length >= 8 && password.length <= 20;
 }
 
 export function AuthScreen(props: AuthScreenProps) {
@@ -33,62 +29,55 @@ export function AuthScreen(props: AuthScreenProps) {
     mode, setMode,
     loginEmail, setLoginEmail,
     loginPassword, setLoginPassword,
-    onLogin, loading, feedback,
+    onLogin, onLoginWithCredentials, loading, feedback,
   } = props;
 
-  // ─── Estado local do formulário de registro ───────────────────────────────
   const [registerName, setRegisterName] = useState("");
   const [registerEmail, setRegisterEmail] = useState("");
   const [registerPassword, setRegisterPassword] = useState("");
   const [registerRole, setRegisterRole] = useState<UserRole>("student");
   const [registerBio, setRegisterBio] = useState("");
   const [registerLoading, setRegisterLoading] = useState(false);
+  const [registerError, setRegisterError] = useState("");
 
   const roleOptions: UserRole[] = ["student", "teacher", "admin"];
 
-  // ─── Submissão do cadastro ────────────────────────────────────────────────
   const handleRegister = async () => {
+    setRegisterError("");
+
     if (!validatePassword(registerPassword)) {
-      Alert.alert("Senha inválida", "A senha deve ter entre 8 e 20 caracteres, incluindo letras e números.");
+      setRegisterError("A senha deve ter entre 8 e 20 caracteres, incluindo letras e números.");
       return;
     }
 
     if (registerRole !== "student" && registerBio.trim().length < 3) {
-      Alert.alert("Bio obrigatória", "Professores e admins precisam preencher a bio.");
+      setRegisterError("Professores e admins precisam preencher a bio.");
       return;
     }
 
+    const emailToLogin = registerEmail.trim();
+    const passwordToLogin = registerPassword;
+
     setRegisterLoading(true);
     try {
-      const novoUsuario = await authService.create({
+      await authService.create({
         username: registerName.trim(),
-        email: registerEmail.trim(),
-        password: registerPassword,
+        email: emailToLogin,
+        password: passwordToLogin,
         role: registerRole,
         bio: registerBio.trim(),
         profile_image_base64: defaultAvatarBase64,
       });
 
-      // Salva informações básicas (equivalente ao localStorage do web)
-      await AsyncStorage.multiSet([
-        ["userId", novoUsuario.user_id],
-        ["userName", novoUsuario.username],
-        ["userEmail", novoUsuario.email],
-        ["nivelAcesso", novoUsuario.role],
-      ]);
-
-      Alert.alert("Cadastro realizado!", "Agora faça login com suas credenciais.");
-      setMode("login");
-
-      // Limpa formulário
       setRegisterName("");
       setRegisterEmail("");
       setRegisterPassword("");
       setRegisterBio("");
       setRegisterRole("student");
+
+      onLoginWithCredentials(emailToLogin, passwordToLogin);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Erro ao cadastrar.";
-      Alert.alert("Erro ao cadastrar", msg);
+      setRegisterError(error instanceof Error ? error.message : "Erro ao cadastrar.");
     } finally {
       setRegisterLoading(false);
     }
@@ -191,6 +180,9 @@ export function AuthScreen(props: AuthScreenProps) {
               onChangeText={setRegisterBio}
               testID="register-bio"
             />
+
+            {registerError ? <Text style={styles.errorText}>{registerError}</Text> : null}
+
             <AppButton
               label="Cadastrar"
               onPress={handleRegister}
@@ -239,6 +231,11 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.m,
   },
   roleButton: { minWidth: 90 },
+  errorText: {
+    color: "red",
+    fontSize: theme.typography.small,
+    marginBottom: theme.spacing.s,
+  },
   feedback: {
     marginTop: theme.spacing.m,
     color: theme.colors.primary,

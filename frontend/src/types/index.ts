@@ -8,6 +8,7 @@ export interface User {
   bio: string;
   profile_image_base64: string;
   created_at: string;
+  active: boolean;
 }
 
 export interface AuthResponse {

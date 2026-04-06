@@ -37,6 +37,9 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "EXPO_PUBLIC_BACKEND_URL": "https://orange-fortnight-4jvpvp95g4p4f5gxx-8080.app.github.dev"
     }
   }
 }
