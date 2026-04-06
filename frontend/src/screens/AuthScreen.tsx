@@ -1,8 +1,12 @@
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
-import { theme } from "../constants/theme";
-import { UserRole } from "../types";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useState } from "react";
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AppButton } from "../components/AppButton";
 import { AppInput } from "../components/AppInput";
+import { theme } from "../constants/theme";
+import authService from "../services/authService";
+import { UserRole } from "../types";
+import { defaultAvatarBase64 } from "../constants/images";
 
 interface AuthScreenProps {
   mode: "login" | "register";
@@ -11,47 +15,84 @@ interface AuthScreenProps {
   setLoginEmail: (value: string) => void;
   loginPassword: string;
   setLoginPassword: (value: string) => void;
-  registerName: string;
-  setRegisterName: (value: string) => void;
-  registerEmail: string;
-  setRegisterEmail: (value: string) => void;
-  registerPassword: string;
-  setRegisterPassword: (value: string) => void;
-  registerRole: UserRole;
-  setRegisterRole: (value: UserRole) => void;
-  registerBio: string;
-  setRegisterBio: (value: string) => void;
   onLogin: () => void;
-  onRegister: () => void;
   loading: boolean;
   feedback: string;
 }
 
+/** Valida senha: 8-20 caracteres, com letras e números */
+function validatePassword(password: string): boolean {
+  const hasLetters = /[a-zA-Z]/.test(password);
+  const hasNumbers = /\d/.test(password);
+  const validLength = password.length >= 8 && password.length <= 20;
+  return hasLetters && hasNumbers && validLength;
+}
+
 export function AuthScreen(props: AuthScreenProps) {
   const {
-    mode,
-    setMode,
-    loginEmail,
-    setLoginEmail,
-    loginPassword,
-    setLoginPassword,
-    registerName,
-    setRegisterName,
-    registerEmail,
-    setRegisterEmail,
-    registerPassword,
-    setRegisterPassword,
-    registerRole,
-    setRegisterRole,
-    registerBio,
-    setRegisterBio,
-    onLogin,
-    onRegister,
-    loading,
-    feedback,
+    mode, setMode,
+    loginEmail, setLoginEmail,
+    loginPassword, setLoginPassword,
+    onLogin, loading, feedback,
   } = props;
 
+  // ─── Estado local do formulário de registro ───────────────────────────────
+  const [registerName, setRegisterName] = useState("");
+  const [registerEmail, setRegisterEmail] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [registerRole, setRegisterRole] = useState<UserRole>("student");
+  const [registerBio, setRegisterBio] = useState("");
+  const [registerLoading, setRegisterLoading] = useState(false);
+
   const roleOptions: UserRole[] = ["student", "teacher", "admin"];
+
+  // ─── Submissão do cadastro ────────────────────────────────────────────────
+  const handleRegister = async () => {
+    if (!validatePassword(registerPassword)) {
+      Alert.alert("Senha inválida", "A senha deve ter entre 8 e 20 caracteres, incluindo letras e números.");
+      return;
+    }
+
+    if (registerRole !== "student" && registerBio.trim().length < 3) {
+      Alert.alert("Bio obrigatória", "Professores e admins precisam preencher a bio.");
+      return;
+    }
+
+    setRegisterLoading(true);
+    try {
+      const novoUsuario = await authService.create({
+        username: registerName.trim(),
+        email: registerEmail.trim(),
+        password: registerPassword,
+        role: registerRole,
+        bio: registerBio.trim(),
+        profile_image_base64: defaultAvatarBase64,
+      });
+
+      // Salva informações básicas (equivalente ao localStorage do web)
+      await AsyncStorage.multiSet([
+        ["userId", novoUsuario.user_id],
+        ["userName", novoUsuario.username],
+        ["userEmail", novoUsuario.email],
+        ["nivelAcesso", novoUsuario.role],
+      ]);
+
+      Alert.alert("Cadastro realizado!", "Agora faça login com suas credenciais.");
+      setMode("login");
+
+      // Limpa formulário
+      setRegisterName("");
+      setRegisterEmail("");
+      setRegisterPassword("");
+      setRegisterBio("");
+      setRegisterRole("student");
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Erro ao cadastrar.";
+      Alert.alert("Erro ao cadastrar", msg);
+    } finally {
+      setRegisterLoading(false);
+    }
+  };
 
   return (
     <KeyboardAvoidingView
@@ -105,7 +146,7 @@ export function AuthScreen(props: AuthScreenProps) {
         ) : (
           <View style={styles.card}>
             <AppInput
-              label="Username"
+              label="Nome"
               placeholder="Seu nome no app"
               value={registerName}
               onChangeText={setRegisterName}
@@ -122,7 +163,7 @@ export function AuthScreen(props: AuthScreenProps) {
             />
             <AppInput
               label="Senha"
-              placeholder="Mínimo 6 caracteres"
+              placeholder="8 a 20 caracteres, letras e números"
               secureTextEntry
               value={registerPassword}
               onChangeText={setRegisterPassword}
@@ -152,11 +193,10 @@ export function AuthScreen(props: AuthScreenProps) {
             />
             <AppButton
               label="Cadastrar"
-              onPress={onRegister}
-              loading={loading}
+              onPress={handleRegister}
+              loading={registerLoading}
               testID="register-submit"
             />
-            <Text style={styles.note}>Imagem de perfil base64 padrão aplicada automaticamente.</Text>
           </View>
         )}
 
@@ -174,28 +214,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.l,
     paddingVertical: theme.spacing.l,
   },
-  headerBlock: {
-    marginBottom: theme.spacing.l,
-    gap: theme.spacing.s,
-  },
-  title: {
-    fontSize: theme.typography.h1,
-    fontWeight: "800",
-    color: theme.colors.textMain,
-  },
-  subtitle: {
-    fontSize: theme.typography.body,
-    color: theme.colors.textMuted,
-    lineHeight: 24,
-  },
-  modeSwitch: {
-    flexDirection: "row",
-    gap: theme.spacing.s,
-    marginBottom: theme.spacing.l,
-  },
-  halfButton: {
-    flex: 1,
-  },
+  headerBlock: { marginBottom: theme.spacing.l, gap: theme.spacing.s },
+  title: { fontSize: theme.typography.h1, fontWeight: "800", color: theme.colors.textMain },
+  subtitle: { fontSize: theme.typography.body, color: theme.colors.textMuted, lineHeight: 24 },
+  modeSwitch: { flexDirection: "row", gap: theme.spacing.s, marginBottom: theme.spacing.l },
+  halfButton: { flex: 1 },
   card: {
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -215,18 +238,11 @@ const styles = StyleSheet.create({
     gap: theme.spacing.s,
     marginBottom: theme.spacing.m,
   },
-  roleButton: {
-    minWidth: 90,
-  },
+  roleButton: { minWidth: 90 },
   feedback: {
     marginTop: theme.spacing.m,
     color: theme.colors.primary,
     fontSize: theme.typography.small,
     textAlign: "left",
-  },
-  note: {
-    marginTop: theme.spacing.s,
-    color: theme.colors.textMuted,
-    fontSize: 12,
   },
 });

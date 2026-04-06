@@ -1,126 +1,79 @@
-import {
-  AdminOverview,
-  AuthResponse,
-  Course,
-  CreateCoursePayload,
-  Enrollment,
-  LoginPayload,
-  RegisterPayload,
-  User,
-} from "../types";
+/**
+ * api.ts — Instância central do Axios.
+ *
+ * - baseURL lida do EXPO_PUBLIC_BACKEND_URL (definido em .env)
+ * - Token JWT armazenado em memória e injetado automaticamente via interceptor síncrono
+ * - Interceptor de response normaliza erros da API em ApiError
+ */
+import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
+import Constants from "expo-constants";
 
-interface ApiErrorPayload {
-  detail?: string | Array<{ msg?: string; loc?: (string | number)[] }>;
-  message?: string;
+// ─── Base URL ─────────────────────────────────────────────────────────────────
+
+const appConfig = Constants.expoConfig;
+const fallbackUrl = process.env.EXPO_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+const rawBaseUrl =
+  (appConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string | undefined) ?? fallbackUrl;
+
+function buildBaseUrl(url: string): string {
+  const trimmed = url.endsWith("/") ? url.slice(0, -1) : url;
+  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
 }
 
-class ApiError extends Error {
-  constructor(message: string) {
+export const BASE_URL = buildBaseUrl(rawBaseUrl);
+
+// ─── Token em memória ─────────────────────────────────────────────────────────
+// Definido pelo index.tsx após login ou restauração de sessão.
+
+let _token: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  _token = token;
+}
+
+// ─── Instância Axios ──────────────────────────────────────────────────────────
+
+export const api = axios.create({
+  baseURL: BASE_URL,
+  timeout: 15000,
+  headers: { "Content-Type": "application/json" },
+});
+
+// ─── Interceptor de request: injeta token JWT (síncrono) ─────────────────────
+
+api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  if (_token) config.headers.set("Authorization", `Bearer ${_token}`);
+  return config;
+});
+
+// ─── Interceptor de response: normaliza erros ────────────────────────────────
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number
+  ) {
     super(message);
     this.name = "ApiError";
   }
 }
 
-function normalizeBaseUrl(baseUrl: string): string {
-  const withoutSlash = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-  if (withoutSlash.endsWith("/api")) {
-    return withoutSlash;
+api.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError<{ detail?: string | Array<{ msg?: string }>; message?: string }>) => {
+    const data = error.response?.data;
+    let message = "Erro inesperado na API.";
+
+    if (typeof data?.detail === "string") {
+      message = data.detail;
+    } else if (Array.isArray(data?.detail)) {
+      message = data.detail.map((e) => e.msg ?? "Erro de validação").join("; ");
+    } else if (data?.message) {
+      message = data.message;
+    } else if (error.message) {
+      message = error.message;
+    }
+
+    return Promise.reject(new ApiError(message, error.response?.status));
   }
-  return `${withoutSlash}/api`;
-}
-
-async function parseApiError(response: Response): Promise<never> {
-  let message = "Erro inesperado na API.";
-  try {
-    const payload = (await response.json()) as ApiErrorPayload;
-    
-    // Se detail for uma string, use-a
-    if (typeof payload.detail === "string") {
-      message = payload.detail;
-    }
-    // Se detail for um array (erros de validação do Pydantic), extraia as mensagens
-    else if (Array.isArray(payload.detail)) {
-      const errors = payload.detail
-        .map((err) => err.msg || "Erro de validação")
-        .join("; ");
-      message = errors || message;
-    }
-    // Fallback para message
-    else if (payload.message) {
-      message = payload.message;
-    }
-  } catch (jsonError) {
-    // Se não conseguir fazer parse do JSON, use o statusText
-    message = response.statusText || `Erro HTTP ${response.status}`;
-  }
-  throw new ApiError(message);
-}
-
-export function createApiClient(baseUrl: string) {
-  const apiBaseUrl = normalizeBaseUrl(baseUrl);
-
-  async function request<T>(
-    path: string,
-    options: RequestInit = {},
-    token?: string
-  ): Promise<T> {
-    const headers = new Headers(options.headers ?? {});
-    headers.set("Content-Type", "application/json");
-
-    if (token) {
-      headers.set("Authorization", `Bearer ${token}`);
-    }
-
-    const response = await fetch(`${apiBaseUrl}${path}`, {
-      ...options,
-      headers,
-    });
-
-    if (!response.ok) {
-      await parseApiError(response);
-    }
-
-    return (await response.json()) as T;
-  }
-
-  return {
-    register: (payload: RegisterPayload) =>
-      request<User>("/auth/register", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }),
-
-    login: (payload: LoginPayload) =>
-      request<AuthResponse>("/auth/login", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }),
-
-    me: (token: string) => request<User>("/auth/me", { method: "GET" }, token),
-
-    getCourses: () => request<Course[]>("/courses", { method: "GET" }),
-
-    getCourseById: (courseId: string) => request<Course>(`/courses/${courseId}`, { method: "GET" }),
-
-    createCourse: (payload: CreateCoursePayload, token: string) =>
-      request<Course>("/courses", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }, token),
-
-    enroll: (courseId: string, token: string) =>
-      request<{ enrollment_id: string }>(`/courses/${courseId}/enroll`, {
-        method: "POST",
-      }, token),
-
-    myEnrollments: (token: string) => request<Enrollment[]>("/enrollments/me", { method: "GET" }, token),
-
-    professorCourses: (token: string) =>
-      request<Course[]>("/professor/courses", { method: "GET" }, token),
-
-    adminOverview: (token: string) =>
-      request<AdminOverview>("/admin/overview", { method: "GET" }, token),
-  };
-}
-
-export { ApiError };
+);

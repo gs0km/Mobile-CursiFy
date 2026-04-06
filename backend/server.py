@@ -107,6 +107,14 @@ class EnrolledCourseOut(BaseModel):
     course: CourseOut
 
 
+class UpdateProfileInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(min_length=3, max_length=40)
+    bio: str = Field(default="", max_length=400)
+    profile_image_base64: str = ""
+
+
 class AdminOverview(BaseModel):
     users_total: int
     students_total: int
@@ -234,6 +242,43 @@ async def login_user(payload: LoginInput) -> LoginResponse:
 @api_router.get("/auth/me", response_model=UserPublic)
 async def read_current_user(current_user: CurrentUser = Depends(get_current_user)) -> UserPublic:
     return UserPublic(**current_user.model_dump())
+
+
+@api_router.put("/auth/profile", response_model=UserPublic)
+async def update_profile(
+    payload: UpdateProfileInput,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> UserPublic:
+    if payload.username != current_user.username:
+        existing = await db.users.find_one({"username": payload.username}, {"_id": 0, "user_id": 1})
+        if existing and existing["user_id"] != current_user.user_id:
+            raise HTTPException(status_code=409, detail="Username já está em uso.")
+
+    await db.users.update_one(
+        {"user_id": current_user.user_id},
+        {"$set": {
+            "username": payload.username.strip(),
+            "bio": payload.bio.strip(),
+            "profile_image_base64": payload.profile_image_base64,
+        }},
+    )
+    updated = await db.users.find_one({"user_id": current_user.user_id}, {"_id": 0, "password_hash": 0})
+    return user_to_public(updated)
+
+
+@api_router.delete("/courses/{course_id}", status_code=204)
+async def delete_course(
+    course_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> None:
+    ensure_role(current_user, {"teacher", "admin"})
+    query = {"course_id": course_id}
+    if current_user.role == "teacher":
+        query["teacher_id"] = current_user.user_id
+    result = await db.courses.delete_one(query)
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Curso não encontrado ou sem permissão.")
+    await db.enrollments.delete_many({"course_id": course_id})
 
 
 @api_router.get("/courses", response_model=list[CourseOut])

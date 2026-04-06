@@ -1,4 +1,4 @@
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { Alert, FlatList, StyleSheet, Text, View } from "react-native";
 import { AppButton } from "../components/AppButton";
 import { AppInput } from "../components/AppInput";
 import { CourseCard } from "../components/CourseCard";
@@ -25,6 +25,7 @@ interface TeacherScreenProps {
   onCreateCourse: () => void;
   courses: Course[];
   onOpenCourse: (course: Course) => void;
+  onDeleteCourse: (courseId: string) => void;
 }
 
 const levels: CourseLevel[] = ["beginner", "intermediate", "advanced"];
@@ -108,7 +109,25 @@ export function TeacherScreen(props: TeacherScreenProps) {
           />
         </View>
       }
-      renderItem={({ item }) => <CourseCard course={item} onPress={() => props.onOpenCourse(item)} />}
+      renderItem={({ item }) => (
+        <View style={styles.courseRow}>
+          <View style={styles.courseCardWrap}>
+            <CourseCard course={item} onPress={() => props.onOpenCourse(item)} />
+          </View>
+          <AppButton
+            label="Excluir"
+            variant="outline"
+            style={styles.deleteBtn}
+            onPress={() =>
+              Alert.alert("Excluir curso", `Deseja excluir "${item.title}"?`, [
+                { text: "Cancelar", style: "cancel" },
+                { text: "Excluir", style: "destructive", onPress: () => props.onDeleteCourse(item.course_id) },
+              ])
+            }
+            testID={`delete-course-${item.course_id}`}
+          />
+        </View>
+      )}
       ListEmptyComponent={<Text style={styles.empty}>Você ainda não criou cursos.</Text>}
     />
   );
@@ -165,6 +184,17 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontSize: theme.typography.body,
     marginTop: theme.spacing.l,
+  },
+  courseRow: {
+    gap: theme.spacing.s,
+  },
+  courseCardWrap: {
+    flex: 1,
+  },
+  deleteBtn: {
+    marginHorizontal: theme.spacing.s,
+    marginBottom: theme.spacing.s,
+    borderColor: theme.colors.error,
   },
   lockedContainer: {
     flex: 1,

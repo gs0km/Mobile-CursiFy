@@ -1,4 +1,15 @@
-import Constants from "expo-constants";
+/**
+ * index.tsx — Ponto de entrada do app CursiFy.
+ *
+ * Integração com o backend via services (Axios):
+ *   - authService    → login, registro, perfil
+ *   - courseService  → catálogo, criação, exclusão
+ *   - enrollmentService → inscrições do usuário
+ *   - adminService   → painel administrativo
+ *
+ * Sessão persistida no AsyncStorage (chave: cursify_session).
+ */
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -11,7 +22,7 @@ import {
   View,
 } from "react-native";
 import { BottomTabBar } from "../src/components/BottomTabBar";
-import { defaultAvatarBase64, pickCourseImage } from "../src/constants/images";
+import { pickCourseImage } from "../src/constants/images";
 import { theme } from "../src/constants/theme";
 import { AdminScreen } from "../src/screens/AdminScreen";
 import { AuthScreen } from "../src/screens/AuthScreen";
@@ -20,7 +31,11 @@ import { CourseDetailsScreen } from "../src/screens/CourseDetailsScreen";
 import { MyCoursesScreen } from "../src/screens/MyCoursesScreen";
 import { ProfileScreen } from "../src/screens/ProfileScreen";
 import { TeacherScreen } from "../src/screens/TeacherScreen";
-import { ApiError, createApiClient } from "../src/services/api";
+import { ApiError, setAuthToken } from "../src/services/api";
+import adminService from "../src/services/adminService";
+import authService from "../src/services/authService";
+import courseService from "../src/services/courseService";
+import enrollmentService from "../src/services/enrollmentService";
 import {
   AdminOverview,
   AppTab,
@@ -28,30 +43,20 @@ import {
   CourseLevel,
   CreateCoursePayload,
   Enrollment,
+  UpdateProfilePayload,
   User,
-  UserRole,
 } from "../src/types";
 
 type AuthMode = "login" | "register";
 
-const appConfig = Constants.expoConfig;
-const fallbackBackend = process.env.EXPO_PUBLIC_BACKEND_URL ?? "";
-const backendUrl =
-  (appConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string | undefined) ?? fallbackBackend;
+const SESSION_KEY = "cursify_session";
 
 export default function Index() {
-  const api = useMemo(() => createApiClient(backendUrl), []);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
-
-  const [registerName, setRegisterName] = useState("");
-  const [registerEmail, setRegisterEmail] = useState("");
-  const [registerPassword, setRegisterPassword] = useState("");
-  const [registerRole, setRegisterRole] = useState<UserRole>("student");
-  const [registerBio, setRegisterBio] = useState("");
 
   const [token, setToken] = useState("");
   const [user, setUser] = useState<User | null>(null);
@@ -72,69 +77,66 @@ export default function Index() {
   const [newCourseLevel, setNewCourseLevel] = useState<CourseLevel>("beginner");
 
   const [busy, setBusy] = useState(false);
-  const [screenLoading, setScreenLoading] = useState(false);
+  const [screenLoading, setScreenLoading] = useState(true);
   const [feedback, setFeedback] = useState("");
 
+  // ─── Restaura sessão salva ao abrir o app ──────────────────────────────────
   useEffect(() => {
-    const enableNativeDriver = Platform.OS !== "web";
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 100,
-      useNativeDriver: enableNativeDriver,
-    }).start(() => {
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 220,
-        useNativeDriver: enableNativeDriver,
-      }).start();
+    AsyncStorage.getItem(SESSION_KEY).then((raw) => {
+      if (!raw) { setScreenLoading(false); return; }
+      try {
+        const { token: savedToken, user: savedUser } = JSON.parse(raw) as { token: string; user: User };
+        setToken(savedToken);
+        setUser(savedUser);
+        setAuthToken(savedToken);
+        loadInitialData(savedUser).finally(() => setScreenLoading(false));
+      } catch {
+        setScreenLoading(false);
+      }
     });
+  }, []);
+
+  // ─── Animação de transição entre abas ─────────────────────────────────────
+  useEffect(() => {
+    const useNative = Platform.OS !== "web";
+    Animated.timing(fadeAnim, { toValue: 0, duration: 100, useNativeDriver: useNative }).start(() =>
+      Animated.timing(fadeAnim, { toValue: 1, duration: 220, useNativeDriver: useNative }).start()
+    );
   }, [activeTab, selectedCourse, fadeAnim]);
 
+  // ─── Abas dinâmicas por role ───────────────────────────────────────────────
   const tabs = useMemo(() => {
-    if (!user) {
-      return [];
-    }
-    const baseTabs: { key: AppTab; label: string; icon: "home-outline" | "book-outline" | "school-outline" | "shield-checkmark-outline" | "person-outline" }[] = [
+    if (!user) return [];
+    const base: { key: AppTab; label: string; icon: "home-outline" | "book-outline" | "school-outline" | "shield-checkmark-outline" | "person-outline" }[] = [
       { key: "catalog", label: "Catálogo", icon: "home-outline" },
       { key: "my-courses", label: "Cursos", icon: "book-outline" },
     ];
-
-    if (user.role === "teacher" || user.role === "admin") {
-      baseTabs.push({ key: "teacher", label: "Professor", icon: "school-outline" });
-    }
-    if (user.role === "admin") {
-      baseTabs.push({ key: "admin", label: "Admin", icon: "shield-checkmark-outline" });
-    }
-
-    baseTabs.push({ key: "profile", label: "Perfil", icon: "person-outline" });
-    return baseTabs;
+    if (user.role === "teacher" || user.role === "admin")
+      base.push({ key: "teacher", label: "Professor", icon: "school-outline" });
+    if (user.role === "admin")
+      base.push({ key: "admin", label: "Admin", icon: "shield-checkmark-outline" });
+    base.push({ key: "profile", label: "Perfil", icon: "person-outline" });
+    return base;
   }, [user]);
 
-  const loadInitialData = async (nextUser: User, nextToken: string) => {
+  // ─── Carrega dados iniciais após login/restauração ─────────────────────────
+  const loadInitialData = async (nextUser: User) => {
     setScreenLoading(true);
     try {
-      const loadCoursesPromise = api.getCourses();
-      const loadEnrollmentsPromise = api.myEnrollments(nextToken);
-      const loadTeacherPromise =
+      const [catalog, enrollments, teacher, admin] = await Promise.all([
+        courseService.getAll(),
+        enrollmentService.getAll(),
         nextUser.role === "teacher" || nextUser.role === "admin"
-          ? api.professorCourses(nextToken)
-          : Promise.resolve([] as Course[]);
-      const loadAdminPromise =
+          ? courseService.getProfessorCourses()
+          : Promise.resolve([] as Course[]),
         nextUser.role === "admin"
-          ? api.adminOverview(nextToken)
-          : Promise.resolve(null as AdminOverview | null);
-
-      const [catalogResponse, enrollResponse, teacherResponse, adminResponse] = await Promise.all([
-        loadCoursesPromise,
-        loadEnrollmentsPromise,
-        loadTeacherPromise,
-        loadAdminPromise,
+          ? adminService.getAll()
+          : Promise.resolve(null as AdminOverview | null),
       ]);
-
-      setCourses(catalogResponse);
-      setMyEnrollments(enrollResponse);
-      setTeacherCourses(teacherResponse);
-      setAdminOverview(adminResponse);
+      setCourses(catalog);
+      setMyEnrollments(enrollments);
+      setTeacherCourses(teacher);
+      setAdminOverview(admin);
     } catch (error) {
       handleError(error);
     } finally {
@@ -142,55 +144,28 @@ export default function Index() {
     }
   };
 
+  // ─── Tratamento global de erros ───────────────────────────────────────────
   const handleError = (error: unknown) => {
-    if (error instanceof ApiError) {
+    if (error instanceof ApiError || error instanceof Error) {
       setFeedback(error.message);
-      return;
-    }
-    
-    if (error instanceof Error) {
-      setFeedback(error.message);
-      return;
-    }
-    
-    // Fallback para tipos desconhecidos
-    setFeedback("Não foi possível concluir a ação. Tente novamente.");
-  };
-
-  const handleRegister = async () => {
-    if (registerRole !== "student" && registerBio.trim().length < 3) {
-      setFeedback("Professores e admins precisam preencher bio.");
-      return;
-    }
-    setBusy(true);
-    setFeedback("");
-    try {
-      await api.register({
-        email: registerEmail.trim(),
-        username: registerName.trim(),
-        password: registerPassword,
-        role: registerRole,
-        bio: registerBio.trim(),
-        profile_image_base64: defaultAvatarBase64,
-      });
-      setFeedback("Cadastro realizado! Agora faça login.");
-      setAuthMode("login");
-    } catch (error) {
-      handleError(error);
-    } finally {
-      setBusy(false);
+    } else {
+      setFeedback("Não foi possível concluir a ação. Tente novamente.");
     }
   };
 
+  // ─── Auth ──────────────────────────────────────────────────────────────────
   const handleLogin = async () => {
     setBusy(true);
     setFeedback("");
     try {
-      const response = await api.login({ email: loginEmail.trim(), password: loginPassword });
+      // authService.login consome POST /api/auth/login e retorna { access_token, user }
+      const response = await authService.login({ email: loginEmail.trim(), password: loginPassword });
       setToken(response.access_token);
       setUser(response.user);
+      setAuthToken(response.access_token);
       setActiveTab("catalog");
-      await loadInitialData(response.user, response.access_token);
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ token: response.access_token, user: response.user }));
+      await loadInitialData(response.user);
       setFeedback(`Bem-vindo, ${response.user.username}!`);
     } catch (error) {
       handleError(error);
@@ -199,10 +174,11 @@ export default function Index() {
     }
   };
 
+  // ─── Cursos ────────────────────────────────────────────────────────────────
   const handleRefreshCatalog = async () => {
     setScreenLoading(true);
     try {
-      setCourses(await api.getCourses());
+      setCourses(await courseService.getAll());
     } catch (error) {
       handleError(error);
     } finally {
@@ -212,50 +188,16 @@ export default function Index() {
 
   const handleOpenCourseById = async (courseId: string) => {
     try {
-      const detail = await api.getCourseById(courseId);
-      setSelectedCourse(detail);
+      setSelectedCourse(await courseService.getById(courseId));
     } catch (error) {
       handleError(error);
     }
   };
 
-  const handleOpenCourse = async (course: Course) => {
-    await handleOpenCourseById(course.course_id);
-  };
-
-  const handleEnroll = async () => {
-    if (!selectedCourse || !token || !user) {
-      return;
-    }
-    setBusy(true);
-    setFeedback("");
-    try {
-      await api.enroll(selectedCourse.course_id, token);
-      setFeedback("Inscrição confirmada com sucesso!");
-      await loadInitialData(user, token);
-      setSelectedCourse(await api.getCourseById(selectedCourse.course_id));
-      setActiveTab("my-courses");
-    } catch (error) {
-      handleError(error);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const clearCourseForm = () => {
-    setNewCourseTitle("");
-    setNewCourseCategory("Desenvolvimento");
-    setNewCourseDescription("");
-    setNewCoursePedagogy("");
-    setNewCourseLessons("8");
-    setNewCourseHours("4");
-    setNewCourseLevel("beginner");
-  };
+  const handleOpenCourse = (course: Course) => handleOpenCourseById(course.course_id);
 
   const handleCreateCourse = async () => {
-    if (!token || !user) {
-      return;
-    }
+    if (!user) return;
     const payload: CreateCoursePayload = {
       title: newCourseTitle.trim(),
       category: newCourseCategory.trim(),
@@ -266,14 +208,16 @@ export default function Index() {
       level: newCourseLevel,
       thumbnail_base64: pickCourseImage(newCourseCategory, newCourseTitle),
     };
-
     setBusy(true);
     setFeedback("");
     try {
-      await api.createCourse(payload, token);
+      await courseService.create(payload);
       setFeedback("Curso publicado com sucesso.");
-      clearCourseForm();
-      await loadInitialData(user, token);
+      setNewCourseTitle(""); setNewCourseCategory("Desenvolvimento");
+      setNewCourseDescription(""); setNewCoursePedagogy("");
+      setNewCourseLessons("8"); setNewCourseHours("4");
+      setNewCourseLevel("beginner");
+      await loadInitialData(user);
       setActiveTab("catalog");
     } catch (error) {
       handleError(error);
@@ -282,24 +226,71 @@ export default function Index() {
     }
   };
 
+  const handleDeleteCourse = async (courseId: string) => {
+    if (!user) return;
+    setBusy(true);
+    setFeedback("");
+    try {
+      await courseService.remove(courseId);
+      setFeedback("Curso excluído com sucesso.");
+      await loadInitialData(user);
+    } catch (error) {
+      handleError(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // ─── Inscrição ─────────────────────────────────────────────────────────────
+  const handleEnroll = async () => {
+    if (!selectedCourse || !user) return;
+    setBusy(true);
+    setFeedback("");
+    try {
+      await enrollmentService.create(selectedCourse.course_id);
+      setFeedback("Inscrição confirmada com sucesso!");
+      await loadInitialData(user);
+      setSelectedCourse(await courseService.getById(selectedCourse.course_id));
+      setActiveTab("my-courses");
+    } catch (error) {
+      handleError(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // ─── Perfil ────────────────────────────────────────────────────────────────
+  const handleUpdateProfile = async (payload: UpdateProfilePayload) => {
+    if (!token) return;
+    setBusy(true);
+    setFeedback("");
+    try {
+      const updated = await authService.update(payload);
+      setUser(updated);
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ token, user: updated }));
+      setAuthToken(token);
+      setFeedback("Perfil atualizado com sucesso.");
+    } catch (error) {
+      handleError(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleLogout = () => {
-    setToken("");
-    setUser(null);
-    setCourses([]);
-    setSelectedCourse(null);
-    setMyEnrollments([]);
-    setTeacherCourses([]);
-    setAdminOverview(null);
+    AsyncStorage.removeItem(SESSION_KEY);
+    setAuthToken(null);
+    setToken(""); setUser(null); setCourses([]); setSelectedCourse(null);
+    setMyEnrollments([]); setTeacherCourses([]); setAdminOverview(null);
     setFeedback("Sessão encerrada com segurança.");
     setAuthMode("login");
   };
 
+  // ─── Render ────────────────────────────────────────────────────────────────
   const renderMainArea = () => {
-    if (!user) {
-      return null;
-    }
+    if (!user) return null;
 
-    if (selectedCourse) {
+    if (selectedCourse)
       return (
         <CourseDetailsScreen
           course={selectedCourse}
@@ -309,9 +300,8 @@ export default function Index() {
           onEnroll={handleEnroll}
         />
       );
-    }
 
-    if (activeTab === "catalog") {
+    if (activeTab === "catalog")
       return (
         <CatalogScreen
           courses={courses}
@@ -320,52 +310,50 @@ export default function Index() {
           onRefresh={handleRefreshCatalog}
         />
       );
-    }
 
-    if (activeTab === "my-courses") {
+    if (activeTab === "my-courses")
       return <MyCoursesScreen enrollments={myEnrollments} onOpenCourse={handleOpenCourseById} />;
-    }
 
-    if (activeTab === "teacher") {
+    if (activeTab === "teacher")
       return (
         <TeacherScreen
           canManage={user.role === "teacher" || user.role === "admin"}
-          title={newCourseTitle}
-          setTitle={setNewCourseTitle}
-          category={newCourseCategory}
-          setCategory={setNewCourseCategory}
-          description={newCourseDescription}
-          setDescription={setNewCourseDescription}
-          pedagogyDescription={newCoursePedagogy}
-          setPedagogyDescription={setNewCoursePedagogy}
-          lessonsCount={newCourseLessons}
-          setLessonsCount={setNewCourseLessons}
-          estimatedHours={newCourseHours}
-          setEstimatedHours={setNewCourseHours}
-          level={newCourseLevel}
-          setLevel={setNewCourseLevel}
+          title={newCourseTitle} setTitle={setNewCourseTitle}
+          category={newCourseCategory} setCategory={setNewCourseCategory}
+          description={newCourseDescription} setDescription={setNewCourseDescription}
+          pedagogyDescription={newCoursePedagogy} setPedagogyDescription={setNewCoursePedagogy}
+          lessonsCount={newCourseLessons} setLessonsCount={setNewCourseLessons}
+          estimatedHours={newCourseHours} setEstimatedHours={setNewCourseHours}
+          level={newCourseLevel} setLevel={setNewCourseLevel}
           loading={busy}
           onCreateCourse={handleCreateCourse}
           courses={teacherCourses}
           onOpenCourse={handleOpenCourse}
+          onDeleteCourse={handleDeleteCourse}
         />
       );
-    }
 
-    if (activeTab === "admin") {
+    if (activeTab === "admin")
       return <AdminScreen isAdmin={user.role === "admin"} data={adminOverview} />;
-    }
 
-    return <ProfileScreen user={user} onLogout={handleLogout} />;
+    return (
+      <ProfileScreen
+        user={user}
+        onLogout={handleLogout}
+        onUpdateProfile={handleUpdateProfile}
+        loading={busy}
+        feedback={feedback}
+      />
+    );
   };
 
-  if (!backendUrl) {
+  // Tela de loading inicial (restauração de sessão)
+  if (screenLoading && !user)
     return (
       <SafeAreaView style={styles.centered}>
-        <Text style={styles.errorText}>Configure EXPO_PUBLIC_BACKEND_URL para iniciar o app.</Text>
+        <ActivityIndicator color={theme.colors.primary} size="large" />
       </SafeAreaView>
     );
-  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -373,34 +361,17 @@ export default function Index() {
 
       {!token || !user ? (
         <AuthScreen
-          mode={authMode}
-          setMode={setAuthMode}
-          loginEmail={loginEmail}
-          setLoginEmail={setLoginEmail}
-          loginPassword={loginPassword}
-          setLoginPassword={setLoginPassword}
-          registerName={registerName}
-          setRegisterName={setRegisterName}
-          registerEmail={registerEmail}
-          setRegisterEmail={setRegisterEmail}
-          registerPassword={registerPassword}
-          setRegisterPassword={setRegisterPassword}
-          registerRole={registerRole}
-          setRegisterRole={setRegisterRole}
-          registerBio={registerBio}
-          setRegisterBio={setRegisterBio}
+          mode={authMode} setMode={setAuthMode}
+          loginEmail={loginEmail} setLoginEmail={setLoginEmail}
+          loginPassword={loginPassword} setLoginPassword={setLoginPassword}
           onLogin={handleLogin}
-          onRegister={handleRegister}
-          loading={busy}
-          feedback={feedback}
+          loading={busy} feedback={feedback}
         />
       ) : (
         <View style={styles.flex}>
           <View style={styles.header}>
             <Text style={styles.appName}>CursiFy</Text>
-            <Text style={styles.userHint}>
-              {user.username} • {user.role}
-            </Text>
+            <Text style={styles.userHint}>{user.username} • {user.role}</Text>
           </View>
 
           {screenLoading ? (
@@ -409,14 +380,16 @@ export default function Index() {
               <Text style={styles.loadingText}>Sincronizando dados...</Text>
             </View>
           ) : (
-            <Animated.View style={[styles.flex, { opacity: fadeAnim }]}>{renderMainArea()}</Animated.View>
+            <Animated.View style={[styles.flex, { opacity: fadeAnim }]}>
+              {renderMainArea()}
+            </Animated.View>
           )}
 
           {feedback ? <Text style={styles.feedback}>{feedback}</Text> : null}
 
-          {!selectedCourse ? (
+          {!selectedCourse && (
             <BottomTabBar tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
-          ) : null}
+          )}
         </View>
       )}
     </SafeAreaView>
@@ -424,13 +397,8 @@ export default function Index() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  flex: {
-    flex: 1,
-  },
+  safeArea: { flex: 1, backgroundColor: theme.colors.background },
+  flex: { flex: 1 },
   header: {
     paddingHorizontal: theme.spacing.l,
     paddingTop: theme.spacing.l,
@@ -439,26 +407,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
-  appName: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: theme.colors.textMain,
-  },
-  userHint: {
-    marginTop: theme.spacing.s,
-    color: theme.colors.textMuted,
-    fontSize: theme.typography.small,
-  },
-  loaderWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.spacing.m,
-  },
-  loadingText: {
-    color: theme.colors.textMuted,
-    fontSize: theme.typography.body,
-  },
+  appName: { fontSize: 28, fontWeight: "800", color: theme.colors.textMain },
+  userHint: { marginTop: theme.spacing.s, color: theme.colors.textMuted, fontSize: theme.typography.small },
+  loaderWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: theme.spacing.m },
+  loadingText: { color: theme.colors.textMuted, fontSize: theme.typography.body },
   feedback: {
     paddingHorizontal: theme.spacing.l,
     paddingVertical: theme.spacing.s,
@@ -466,16 +418,5 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.small,
     backgroundColor: "#EEF2FF",
   },
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.colors.background,
-    padding: theme.spacing.l,
-  },
-  errorText: {
-    color: theme.colors.error,
-    fontSize: theme.typography.body,
-    textAlign: "left",
-  },
+  centered: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.background },
 });

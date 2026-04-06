@@ -65,6 +65,12 @@ export interface Enrollment {
   course: Course;
 }
 
+export interface UpdateProfilePayload {
+  username: string;
+  bio: string;
+  profile_image_base64: string;
+}
+
 export interface AdminOverview {
   users_total: number;
   students_total: number;
