@@ -137,7 +137,7 @@ function AppContent() {
       { key: "catalog", label: "Catálogo", icon: "home-outline" },
       { key: "my-courses", label: "Cursos", icon: "book-outline" },
     ];
-    if (user.role === "teacher" || user.role === "admin")
+    if (user.role === "admin")
       base.push({ key: "teacher", label: "Professor", icon: "school-outline" });
     if (user.role === "admin")
       base.push({ key: "admin", label: "Admin", icon: "shield-checkmark-outline" });

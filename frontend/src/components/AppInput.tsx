@@ -8,10 +8,10 @@ interface AppInputProps extends TextInputProps {
   prefix?: string;
 }
 
-export function AppInput({ label, prefix, ...props }: AppInputProps) {
+export function AppInput({ label, prefix, secureTextEntry, ...props }: AppInputProps) {
   const { theme } = useTheme();
   const [visible, setVisible] = useState(false);
-  const isPassword = props.secureTextEntry;
+  const isPassword = secureTextEntry;
   const inputStyle = [
     styles.input,
     {
@@ -40,6 +40,8 @@ export function AppInput({ label, prefix, ...props }: AppInputProps) {
           <TextInput
             {...props}
             secureTextEntry={!visible}
+            textContentType="oneTimeCode"
+            importantForAutofill="no"
             style={[{ flex: 1, minHeight: 48, fontSize: theme.typography.body, color: theme.colors.textMain, paddingHorizontal: 16 }, props.style]}
             placeholderTextColor={theme.colors.textMuted}
           />
