@@ -47,19 +47,28 @@ export function CourseCard({ course, onPress, isFavorite, onToggleFavorite, rati
         pressed && styles.pressed,
       ]}
     >
-      <Image source={{ uri: imageUri }} style={[styles.banner, { backgroundColor: theme.colors.surfaceHighlight }]} />
-      {onToggleFavorite && (
-        <Pressable onPress={onToggleFavorite} style={styles.favBtn} hitSlop={8}>
-          <Ionicons name={isFavorite ? "heart" : "heart-outline"} size={22} color={isFavorite ? "#EF4444" : "#fff"} />
-        </Pressable>
-      )}
-      <View style={[styles.content, { gap: theme.spacing.s, padding: theme.spacing.m }]}>
-        <Text style={[styles.category, { color: theme.colors.primary, fontSize: theme.typography.small }]}>{course.category}</Text>
+      <View style={[styles.content, { gap: theme.spacing.s, padding: theme.spacing.l }]}>
+      <View style={styles.headingRow}>
+        <Text style={[styles.category, { color: theme.colors.primary, backgroundColor: theme.colors.surfaceHighlight, fontSize: theme.typography.small }]}>{course.category}</Text>
+        {onToggleFavorite && (
+          <Pressable onPress={onToggleFavorite} hitSlop={8} style={styles.favBtn}>
+            <Ionicons name={isFavorite ? "heart" : "heart-outline"} size={21} color={isFavorite ? "#EF4444" : theme.colors.textMuted} />
+          </Pressable>
+        )}
+      </View>
         <Text style={[styles.title, { color: theme.colors.textMain }]}>{course.title}</Text>
-        <Text style={[styles.meta, { color: theme.colors.textMuted, fontSize: theme.typography.small }]}>{course.teacher_name}</Text>
+        <Text numberOfLines={3} style={[styles.description, { color: theme.colors.textMuted, fontSize: theme.typography.small }]}>{course.description || "Explore o conteúdo deste curso e avance na sua jornada de aprendizagem."}</Text>
         <Text style={[styles.meta, { color: theme.colors.textMuted, fontSize: theme.typography.small }]}>
           {course.carga_horaria}h • {course.enrolled_count} inscritos
         </Text>
+        {course.progresso !== undefined && (
+          <View style={{ marginTop: 2 }}>
+            <Text style={[styles.meta, { color: theme.colors.primary, fontSize: theme.typography.small }]}>Progresso: {Math.max(0, Math.min(100, Number(course.progresso) || 0))}%</Text>
+            <View style={{ height: 6, backgroundColor: theme.colors.border, borderRadius: 6, marginTop: 4 }}>
+              <View style={{ width: `${Math.max(0, Math.min(100, Number(course.progresso) || 0))}%`, height: 6, backgroundColor: theme.colors.primary, borderRadius: 6 }} />
+            </View>
+          </View>
+        )}
         <View style={styles.bottomRow}>
           <View style={styles.ratingRow}>
             <StarRow rating={rating} />
@@ -79,11 +88,12 @@ export function CourseCard({ course, onPress, isFavorite, onToggleFavorite, rati
 const styles = StyleSheet.create({
   card: { overflow: "hidden", borderWidth: 1 },
   pressed: { transform: [{ scale: 0.99 }], opacity: 0.95 },
-  banner: { width: "100%", height: 130 },
-  favBtn: { position: "absolute", top: 10, right: 10, backgroundColor: "rgba(0,0,0,0.35)", borderRadius: 20, padding: 6 },
+  headingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  favBtn: { padding: 4 },
   content: {},
-  category: { fontWeight: "600" },
+  category: { fontWeight: "700", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, overflow: "hidden" },
   title: { fontSize: 20, fontWeight: "700" },
+  description: { lineHeight: 20 },
   meta: {},
   bottomRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 4 },
   ratingRow: { flexDirection: "row", alignItems: "center" },

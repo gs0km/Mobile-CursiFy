@@ -152,15 +152,6 @@ export function MyCoursesScreen({ enrollments, userId, onOpenCourse }: MyCourses
                         </Text>
                       </TouchableOpacity>
                     )}
-                    <TouchableOpacity
-                      onPress={() => openModal(item.course.course_id)}
-                      style={{ paddingHorizontal: theme.spacing.m, paddingVertical: theme.spacing.s, backgroundColor: isDone ? "#D1FAE5" : theme.colors.primary, justifyContent: "center", alignItems: "center", flexDirection: "row" }}
-                    >
-                      <Ionicons name={isDone ? "ribbon" : "checkmark-done"} size={14} color={isDone ? "#10B981" : "#fff"} />
-                      <Text style={{ color: isDone ? "#10B981" : "#fff", fontWeight: "700", fontSize: theme.typography.small, marginLeft: 4 }}>
-                        {isDone ? "Curso finalizado" : "Finalizar curso"}
-                      </Text>
-                    </TouchableOpacity>
                   </View>
 
                   {isOpen && (

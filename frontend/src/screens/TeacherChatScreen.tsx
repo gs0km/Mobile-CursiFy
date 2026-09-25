@@ -79,7 +79,7 @@ export default function TeacherChatScreen({ userName }: Props) {
     setView("chat");
     if (tab !== "teachers") await chatService.markAsRead(userId, user.user_id);
     const msgs = tab === "teachers"
-      ? await chatService.getTeacherMessages()
+      ? await chatService.getTeacherMessages(userId, user.user_id)
       : await chatService.getPrivateMessages(userId, user.user_id);
     setMessages(msgs);
     const update = (prev: UserWithPreview[]) => prev.map((u) => u.user_id === user.user_id ? { ...u, unread: false } : u);
@@ -87,7 +87,7 @@ export default function TeacherChatScreen({ userName }: Props) {
     setTeachers(update);
     intervalRef.current = setInterval(async () => {
       const updated = tab === "teachers"
-        ? await chatService.getTeacherMessages()
+        ? await chatService.getTeacherMessages(userId, user.user_id)
         : await chatService.getPrivateMessages(userId, user.user_id);
       setMessages(updated);
       if (tab !== "teachers") await chatService.markAsRead(userId, user.user_id);
@@ -122,8 +122,8 @@ export default function TeacherChatScreen({ userName }: Props) {
   const send = async () => {
     if (!text.trim() || !selectedUser) return;
     if (tab === "teachers") {
-      await chatService.sendTeacherMessage(userId, userName, text.trim());
-      setMessages(await chatService.getTeacherMessages());
+      await chatService.sendTeacherMessage(userId, selectedUser.user_id, userName, text.trim());
+      setMessages(await chatService.getTeacherMessages(userId, selectedUser.user_id));
     } else {
       await chatService.sendPrivateMessage(userId, selectedUser.user_id, userId, userName, text.trim());
       const msgs = await chatService.getPrivateMessages(userId, selectedUser.user_id);

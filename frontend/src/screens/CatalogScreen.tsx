@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { CourseCard } from "../components/CourseCard";
 import { useTheme } from "../contexts/ThemeContext";
 import courseService from "../services/courseService";
@@ -11,12 +11,16 @@ interface CatalogScreenProps {
   userId: string;
   onOpenCourse: (course: Course) => void;
   onRefresh: () => void;
+  userName?: string;
+  enrolledCount?: number;
+  completedCount?: number;
 }
 
-export function CatalogScreen({ courses, loading, userId, onOpenCourse, onRefresh }: CatalogScreenProps) {
+export function CatalogScreen({ courses, loading, userId, onOpenCourse, onRefresh, userName = "Aluno", enrolledCount = 0, completedCount = 0 }: CatalogScreenProps) {
   const { theme } = useTheme();
   const [favorites, setFavorites] = useState<string[]>([]);
   const [ratings, setRatings] = useState<Record<string, { average: number; count: number }>>({});
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     courseService.getFavorites(userId).then(setFavorites);
@@ -31,6 +35,8 @@ export function CatalogScreen({ courses, loading, userId, onOpenCourse, onRefres
     await courseService.toggleFavorite(userId, courseId);
     setFavorites((prev) => prev.includes(courseId) ? prev.filter((id) => id !== courseId) : [...prev, courseId]);
   };
+  const visibleCourses = courses.filter((course) => `${course.title} ${course.description} ${course.category}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const hasSearch = search.trim().length > 0;
 
   return (
     <ScrollView
@@ -38,17 +44,25 @@ export function CatalogScreen({ courses, loading, userId, onOpenCourse, onRefres
       refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} />}
       contentContainerStyle={{ paddingHorizontal: theme.spacing.l, paddingTop: theme.spacing.l, paddingBottom: theme.spacing.xxl }}
     >
-      <Text style={{ fontSize: theme.typography.h2, fontWeight: "700", color: theme.colors.textMain }}>Catálogo de cursos</Text>
-      <Text style={{ marginTop: theme.spacing.s, marginBottom: theme.spacing.l, fontSize: theme.typography.body, color: theme.colors.textMuted }}>
-        Escolha um curso e veja todos os detalhes antes da inscrição.
-      </Text>
+      <TextInput value={search} onChangeText={setSearch} placeholder="Buscar cursos..." placeholderTextColor={theme.colors.textMuted} style={{ borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, color: theme.colors.textMain, backgroundColor: theme.colors.surface, marginBottom: theme.spacing.l }} />
+      {!hasSearch && <View style={{ backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: 20, padding: theme.spacing.l, marginBottom: theme.spacing.l }}>
+        <Text style={{ color: theme.colors.primary, fontWeight: "700", fontSize: theme.typography.small }}>ÁREA DO ALUNO</Text>
+        <Text style={{ color: theme.colors.textMain, fontSize: 26, fontWeight: "800", marginTop: 6 }}>Bem-vindo, {userName}! 👋</Text>
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.body, marginTop: 8, lineHeight: 21 }}>Acompanhe seus estudos, encontre novos cursos e converse com professores em um único lugar.</Text>
+        <View style={{ flexDirection: "row", gap: 10, marginTop: theme.spacing.l }}>
+          <View style={{ flex: 1, backgroundColor: theme.colors.surfaceHighlight, borderRadius: 14, padding: 12 }}><Text style={{ color: theme.colors.textMain, fontSize: 22, fontWeight: "800" }}>{enrolledCount}</Text><Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>cursos ativos</Text></View>
+          <View style={{ flex: 1, backgroundColor: theme.colors.surfaceHighlight, borderRadius: 14, padding: 12 }}><Text style={{ color: theme.colors.textMain, fontSize: 22, fontWeight: "800" }}>{completedCount}</Text><Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>concluídos</Text></View>
+        </View>
+      </View>}
+      <Text style={{ display: "none" }} />
+      <Text style={{ display: "none" }} />
 
-      {courses.length === 0 ? (
+      {hasSearch && visibleCourses.length === 0 ? (
         <Text style={{ color: theme.colors.textMuted, marginTop: theme.spacing.xl, fontSize: theme.typography.body }}>
           Ainda não há cursos cadastrados.
         </Text>
       ) : (
-        courses.map((item) => (
+        visibleCourses.map((item) => (
           <CourseCard
             key={item.course_id}
             course={item}

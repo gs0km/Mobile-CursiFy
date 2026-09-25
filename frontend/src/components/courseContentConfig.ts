@@ -35,12 +35,13 @@ export const CONTENT_TYPES: ContentTypeConfig[] = [
     key: "material",
     title: "Materiais",
     endpoint: "material",
-    buildPayload: (item, courseId, _userId, _index, { course }) => ({
+    buildPayload: (item, courseId, userId, _index, { course }) => ({
       titulo: item.titulo,
       subtitulo: item.subtitulo,
       conteudo: item.conteudo,
       link: item.link,
-      status: item.status,
+      statusMaterial: item.status?.trim() || "Nao concluido",
+      usuario: { id: userId },
       curso: { id: courseId, nome: course.nome },
     }),
   },
@@ -52,7 +53,6 @@ export const CONTENT_TYPES: ContentTypeConfig[] = [
       titulo: item.titulo,
       subtitulo: item.subtitulo,
       conteudo: item.conteudo,
-      link: item.link,
       status: item.status,
       curso: { id: courseId, nome: course.nome },
     }),

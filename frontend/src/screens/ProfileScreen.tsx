@@ -6,6 +6,7 @@ import { AppButton } from "../components/AppButton";
 import { AppInput } from "../components/AppInput";
 import { useTheme } from "../contexts/ThemeContext";
 import { UpdateProfilePayload, User } from "../types";
+import authService from "../services/authService";
 
 interface ProfileScreenProps {
   user: User;
@@ -15,7 +16,6 @@ interface ProfileScreenProps {
   feedback: string;
   enrolledCount: number;
   completedCount: number;
-  studiedHours: number;
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -30,21 +30,13 @@ const ROLE_COLOR: Record<string, string> = {
   admin: "#F59E0B",
 };
 
-const LANGUAGES = [
-  { key: "pt", label: "Português" },
-  { key: "en", label: "English" },
-  { key: "es", label: "Español" },
-];
-
-export function ProfileScreen({ user, onLogout, onUpdateProfile, loading, feedback, enrolledCount, completedCount, studiedHours }: ProfileScreenProps) {
-  const { theme, isDark, toggleTheme } = useTheme();
+export function ProfileScreen({ user, onLogout, onUpdateProfile, loading, feedback, enrolledCount, completedCount }: ProfileScreenProps) {
+  const { theme, isDark, setPreferredTheme } = useTheme();
   const [editing, setEditing] = useState(false);
   const [username, setUsername] = useState(user.username);
   const [bio, setBio] = useState(user.bio);
   const [localImage, setLocalImage] = useState<string | null>(null);
   const [localCover, setLocalCover] = useState<string | null>(null);
-  const [language, setLanguage] = useState("pt");
-  const [showLangPicker, setShowLangPicker] = useState(false);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -76,11 +68,7 @@ export function ProfileScreen({ user, onLogout, onUpdateProfile, loading, feedba
     }
   };
 
-  const avatarSource = localImage
-    ? { uri: localImage }
-    : user.profile_image_base64
-    ? { uri: user.profile_image_base64 }
-    : require("../../assets/images/cursify.jpg");
+  const avatarSource = localImage || user.profile_image_base64 ? { uri: localImage ?? user.profile_image_base64 } : null;
 
   const coverSource = localCover ?? user.cover_image_base64 ?? null;
 
@@ -94,13 +82,18 @@ export function ProfileScreen({ user, onLogout, onUpdateProfile, loading, feedba
     setEditing(false);
   };
 
+  const handleToggleTheme = async () => {
+    const nextTheme = isDark ? "light" : "dark";
+    setPreferredTheme(nextTheme);
+    await authService.updateTheme(nextTheme);
+  };
+
   const joinDate = user.created_at
     ? new Date(user.created_at).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
     : null;
 
   const roleColor = ROLE_COLOR[user.role] ?? "#4F46E5";
   const roleLabel = ROLE_LABEL[user.role] ?? user.role;
-  const currentLang = LANGUAGES.find((l) => l.key === language)?.label ?? "Português";
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]} contentContainerStyle={{ paddingBottom: theme.spacing.xxl }}>
@@ -122,7 +115,11 @@ export function ProfileScreen({ user, onLogout, onUpdateProfile, loading, feedba
         {/* Avatar sobre a capa */}
         <View style={styles.avatarWrap}>
           <Pressable onPress={editing ? pickImage : undefined}>
-            <Image source={avatarSource} style={[styles.avatar, { borderColor: theme.colors.background }]} />
+            {avatarSource ? <Image source={avatarSource} style={[styles.avatar, { borderColor: theme.colors.background }]} /> : (
+              <View style={[styles.avatar, { borderColor: theme.colors.background, backgroundColor: roleColor, alignItems: "center", justifyContent: "center" }]}>
+                <Text style={{ color: "#fff", fontSize: 24, fontWeight: "800" }}>{user.username.slice(0, 2).toUpperCase()}</Text>
+              </View>
+            )}
             {editing && (
               <View style={[styles.avatarOverlay, { backgroundColor: theme.colors.primary }]}>
                 <Ionicons name="camera" size={14} color="#fff" />
@@ -186,49 +183,14 @@ export function ProfileScreen({ user, onLogout, onUpdateProfile, loading, feedba
             <Text style={{ fontSize: 22, fontWeight: "800", color: "#10B981", marginTop: 4 }}>{completedCount}</Text>
             <Text style={{ fontSize: 11, color: theme.colors.textMuted, textAlign: "center" }}>Concluídos</Text>
           </View>
-          <View style={[styles.statCard, { backgroundColor: "#F59E0B" + "18", borderColor: "#F59E0B" + "33" }]}>
-            <Ionicons name="time-outline" size={22} color="#F59E0B" />
-            <Text style={{ fontSize: 22, fontWeight: "800", color: "#F59E0B", marginTop: 4 }}>{studiedHours}h</Text>
-            <Text style={{ fontSize: 11, color: theme.colors.textMuted, textAlign: "center" }}>Estudadas</Text>
-          </View>
         </View>
 
         {/* Configurações */}
         <Text style={{ fontSize: 11, fontWeight: "700", letterSpacing: 0.8, color: theme.colors.textMuted, marginBottom: theme.spacing.s }}>CONFIGURAÇÕES</Text>
 
-        {/* Idioma */}
-        <Pressable
-          onPress={() => setShowLangPicker((v) => !v)}
-          style={[styles.settingRow, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Ionicons name="language-outline" size={20} color={theme.colors.textMuted} />
-            <Text style={{ color: theme.colors.textMain, fontSize: theme.typography.body, marginLeft: theme.spacing.s }}>Idioma</Text>
-          </View>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.small, marginRight: 6 }}>{currentLang}</Text>
-            <Ionicons name={showLangPicker ? "chevron-up" : "chevron-down"} size={16} color={theme.colors.textMuted} />
-          </View>
-        </Pressable>
-
-        {showLangPicker && (
-          <View style={[styles.langPicker, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
-            {LANGUAGES.map((l) => (
-              <Pressable
-                key={l.key}
-                onPress={() => { setLanguage(l.key); setShowLangPicker(false); }}
-                style={[styles.langOption, { borderBottomColor: theme.colors.border, backgroundColor: language === l.key ? theme.colors.primary + "12" : "transparent" }]}
-              >
-                <Text style={{ color: language === l.key ? theme.colors.primary : theme.colors.textMain, fontWeight: language === l.key ? "700" : "400", fontSize: theme.typography.body }}>{l.label}</Text>
-                {language === l.key && <Ionicons name="checkmark" size={16} color={theme.colors.primary} />}
-              </Pressable>
-            ))}
-          </View>
-        )}
-
         {/* Tema escuro */}
         <Pressable
-          onPress={toggleTheme}
+          onPress={handleToggleTheme}
           style={[styles.settingRow, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface, marginTop: theme.spacing.s }]}
         >
           <View style={{ flexDirection: "row", alignItems: "center" }}>

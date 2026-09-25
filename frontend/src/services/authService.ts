@@ -12,6 +12,10 @@ interface BackendUser {
   nivelAcesso: BackendRole;
   dataCadastro?: string;
   statusUsuario?: string | boolean;
+  bio?: string;
+  temaPreferido?: "light" | "dark";
+  foto?: string;
+  fotoCapa?: string;
 }
 
 function mapRole(role: BackendRole): User["role"] {
@@ -51,6 +55,18 @@ function normalizeCpf(value: unknown) {
   return String(value ?? "").replace(/\D/g, "");
 }
 
+function toBackendImage(value: unknown) {
+  if (!value) return null;
+  const text = String(value);
+  return text.includes(",") ? text.substring(text.indexOf(",") + 1) : text;
+}
+
+function toImageUri(value: unknown) {
+  if (!value) return "";
+  const text = String(value);
+  return text.startsWith("data:") ? text : `data:image/jpeg;base64,${text}`;
+}
+
 function mapUser(user: BackendUser): User {
   return {
     user_id: String(user.id),
@@ -58,9 +74,10 @@ function mapUser(user: BackendUser): User {
     username: user.nome,
     cpf: user.cpf ?? "",
     role: mapRole(user.nivelAcesso),
-    bio: "",
-    profile_image_base64: "",
-    cover_image_base64: "",
+    bio: user.bio ?? "",
+    profile_image_base64: toImageUri(user.foto),
+    cover_image_base64: toImageUri(user.fotoCapa),
+    tema_preferido: user.temaPreferido === "dark" ? "dark" : "light",
     created_at: user.dataCadastro ?? new Date().toISOString(),
     active: isUserActive(user.statusUsuario),
   };
@@ -93,10 +110,6 @@ const authService = {
         statusUsuario: "Ativo",
       })
       .then((response) => mapUser(response.data));
-    if (payload.bio) {
-      const { default: AsyncStorage } = await import("@react-native-async-storage/async-storage");
-      await AsyncStorage.setItem(`cursify_bio_${user.user_id}`, payload.bio);
-    }
     return user;
   },
 
@@ -108,14 +121,6 @@ const authService = {
     const user = response.data;
 
     const normalizedUser = mapUser(user);
-    const { default: AsyncStorage } = await import("@react-native-async-storage/async-storage");
-    const savedBio = await AsyncStorage.getItem(`cursify_bio_${normalizedUser.user_id}`);
-    if (savedBio) normalizedUser.bio = savedBio;
-    const savedImage = await AsyncStorage.getItem(`cursify_image_${normalizedUser.user_id}`);
-    if (savedImage) normalizedUser.profile_image_base64 = savedImage;
-    const savedCover = await AsyncStorage.getItem(`cursify_cover_${normalizedUser.user_id}`);
-    if (savedCover) normalizedUser.cover_image_base64 = savedCover;
-
     return {
       access_token: normalizedUser.user_id,
       token_type: "local",
@@ -128,9 +133,12 @@ const authService = {
   update: async (payload: UpdateProfilePayload) => {
     const userId = requireAuthenticatedUserId();
     const currentResponse = await api.get<BackendUser>(`/usuario/${userId}`);
-    const updatedResponse = await api.put<BackendUser>(`/usuario/${userId}`, {
-      ...currentResponse.data,
+    const updatedResponse = await api.put<BackendUser>(`/usuario/${userId}/perfil`, {
       nome: payload.username,
+      bio: payload.bio ?? currentResponse.data.bio ?? "",
+      foto: toBackendImage(payload.profile_image_base64) || currentResponse.data.foto || null,
+      fotoCapa: toBackendImage(payload.cover_image_base64) || currentResponse.data.fotoCapa || null,
+      temaPreferido: payload.tema_preferido || currentResponse.data.temaPreferido || "light",
     });
 
     const result = {
@@ -138,16 +146,15 @@ const authService = {
       bio: payload.bio,
       profile_image_base64: payload.profile_image_base64,
       cover_image_base64: payload.cover_image_base64,
+      tema_preferido: payload.tema_preferido,
     };
-    const { default: AsyncStorage } = await import("@react-native-async-storage/async-storage");
-    await AsyncStorage.setItem(`cursify_bio_${result.user_id}`, payload.bio);
-    if (payload.profile_image_base64) {
-      await AsyncStorage.setItem(`cursify_image_${result.user_id}`, payload.profile_image_base64);
-    }
-    if (payload.cover_image_base64) {
-      await AsyncStorage.setItem(`cursify_cover_${result.user_id}`, payload.cover_image_base64);
-    }
     return result;
+  },
+
+  updateTheme: async (theme: "light" | "dark") => {
+    const userId = requireAuthenticatedUserId();
+    const response = await api.put<{ temaPreferido: "light" | "dark" }>(`/usuario/${userId}/tema`, { temaPreferido: theme });
+    return response.data.temaPreferido;
   },
 
   getAll: () => api.get<BackendUser[]>("/usuario").then((response) => response.data.map(mapUser)),

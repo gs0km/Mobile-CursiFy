@@ -11,6 +11,7 @@ export interface User {
   cover_image_base64: string;
   created_at: string;
   active: boolean;
+  tema_preferido?: "light" | "dark";
 }
 
 export interface AuthResponse {
@@ -50,6 +51,7 @@ export interface Course {
   carga_horaria: number;
   thumbnail_base64: string;
   enrolled_count: number;
+  progresso?: number;
   created_at: string;
   video_links: string[];
   site_links: string[];
@@ -74,6 +76,7 @@ export interface UpdateProfilePayload {
   bio: string;
   profile_image_base64: string;
   cover_image_base64: string;
+  tema_preferido?: "light" | "dark";
 }
 
 export interface AdminOverview {
@@ -92,6 +95,15 @@ export interface CourseMaterial {
   conteudo: string;
   link: string;
   statusMaterial: string;
+}
+
+export interface CourseExercise {
+  id: number;
+  titulo: string;
+  enunciado: string;
+  alternativas: string[];
+  respostaCorreta: string;
+  explicacao?: string;
 }
 
 export type AppTab = "catalog" | "my-courses" | "teacher" | "admin" | "profile" | "chat";

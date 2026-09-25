@@ -120,7 +120,7 @@ export function AuthScreen(props: AuthScreenProps) {
       return;
     }
     if (registerRole !== "student" && registerBio.trim().length < 3) {
-      setRegisterError("Professores e admins precisam preencher a bio.");
+      setRegisterError("O aplicativo mobile é destinado somente a alunos.");
       return;
     }
     const emailToLogin = registerEmail.trim();
@@ -155,7 +155,7 @@ export function AuthScreen(props: AuthScreenProps) {
         <View style={[styles.headerBlock, { marginBottom: theme.spacing.l, alignItems: "center", gap: theme.spacing.s }]}>
           <Image source={cursifyLogo} style={{ width: 80, height: 80, borderRadius: 40, marginBottom: theme.spacing.s, borderWidth: 2, borderColor: "#326791" }} />
           <Text style={{ fontSize: theme.typography.h1, fontWeight: "800", color: theme.colors.textMain }}>CursiFy Mobile</Text>
-          <Text style={{ fontSize: theme.typography.body, color: theme.colors.textMuted, lineHeight: 24 }}>Aprenda, ensine e administre em um só app.</Text>
+          <Text style={{ fontSize: theme.typography.body, color: theme.colors.textMuted, lineHeight: 24 }}>Aprenda com o CursiFy.</Text>
         </View>
 
         <View style={[styles.modeSwitch, { gap: theme.spacing.s, marginBottom: theme.spacing.l }]}>
@@ -198,7 +198,7 @@ export function AuthScreen(props: AuthScreenProps) {
               ))}
             </View>
 
-            <AppInput label="Bio (obrigatória para professor/admin)" placeholder="Fale um pouco sobre você" value={registerBio} onChangeText={setRegisterBio} testID="register-bio" />
+            <AppInput label="Bio" placeholder="Fale um pouco sobre você" value={registerBio} onChangeText={setRegisterBio} testID="register-bio" />
             {registerError ? <Text style={{ color: theme.colors.error, fontSize: theme.typography.small, marginBottom: theme.spacing.s }}>{registerError}</Text> : null}
             <AppButton label="Cadastrar" onPress={handleRegister} loading={registerLoading} testID="register-submit" />
           </View>

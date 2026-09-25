@@ -1,5 +1,6 @@
 ﻿import AsyncStorage from "@react-native-async-storage/async-storage";
 import courseService from "./courseService";
+import { api } from "./api";
 import { CourseCompletion, Enrollment } from "../types";
 
 const COMPLETION_KEY = "cursify_completions";
@@ -25,37 +26,39 @@ async function saveEnrollmentState(userId: string, state: EnrollmentState) {
 
 const enrollmentService = {
   getAll: async (userId: string): Promise<Enrollment[]> => {
-    const [state, completionsRaw] = await Promise.all([
-      getEnrollmentState(userId),
-      AsyncStorage.getItem(COMPLETION_KEY),
-    ]);
+    const [state, completionsRaw] = await Promise.all([getEnrollmentState(userId), AsyncStorage.getItem(COMPLETION_KEY)]);
     const completions: Record<string, { completed: boolean }> = completionsRaw
       ? (JSON.parse(completionsRaw)[userId] ?? {})
       : {};
 
-    const enrolledIds = Object.entries(state)
-      .filter(([, entry]) => entry.enrolled)
-      .map(([courseId]) => courseId);
+    const backendRows = await api.get<any[]>("/usuarioCurso");
+    const backendEnrollments = (backendRows.data ?? []).filter((row) => String(row.usuario?.id ?? row.usuario_id) === String(userId));
+    const enrolledIds = backendEnrollments.map((row) => String(row.curso?.id ?? row.curso_id));
+    // O banco é a fonte de verdade; o estado local não pode criar matrículas falsas.
+    const allEnrolledIds = [...new Set(enrolledIds)];
 
-    if (enrolledIds.length === 0) return [];
+    if (allEnrolledIds.length === 0) return [];
 
     const courses = await courseService.getAll();
 
-    return enrolledIds
+    return allEnrolledIds
       .map((courseId) => {
         const course = courses.find((item) => item.course_id === courseId);
         if (!course) return null;
+        const row = backendEnrollments.find((item) => String(item.curso?.id ?? item.curso_id) === courseId);
+        const progresso = Number(row?.progresso) || 0;
         return {
           enrollment_id: `${userId}-${courseId}`,
-          enrolled_at: state[courseId]?.updatedAt ?? new Date().toISOString(),
-          status: (completions[courseId]?.completed ? "Concluído" : "Em andamento") as "Em andamento" | "Concluído",
-          course,
+          enrolled_at: row?.dataCadastro ?? row?.createdAt ?? new Date().toISOString(),
+          status: (progresso >= 100 ? "Concluído" : "Em andamento") as "Em andamento" | "Concluído",
+          course: { ...course, progresso },
         };
       })
-      .filter((item): item is Enrollment => item !== null);
+      .filter(Boolean) as Enrollment[];
   },
 
   create: async (userId: string, courseId: string) => {
+    await api.post(`/usuarioCurso/inscrever/${userId}/${courseId}`);
     const state = await getEnrollmentState(userId);
     state[courseId] = {
       enrolled: true,

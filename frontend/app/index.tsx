@@ -27,23 +27,18 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { BottomTabBar } from "../src/components/BottomTabBar";
 import { ThemeProvider, useTheme } from "../src/contexts/ThemeContext";
-import { AdminScreen } from "../src/screens/AdminScreen";
 import { AuthScreen } from "../src/screens/AuthScreen";
 import { CatalogScreen } from "../src/screens/CatalogScreen";
 import { CourseDetailsScreen } from "../src/screens/CourseDetailsScreen";
 import { MyCoursesScreen } from "../src/screens/MyCoursesScreen";
 import { ProfileScreen } from "../src/screens/ProfileScreen";
-import { PublishCourseScreen } from "../src/screens/PublishCourseScreen";
-import TeacherChatScreen from "../src/screens/TeacherChatScreen";
 import StudentTeacherChatScreen from "../src/screens/StudentTeacherChatScreen";
 import { ApiError, setAuthToken } from "../src/services/api";
-import adminService from "../src/services/adminService";
 import authService from "../src/services/authService";
 import { chatService } from "../src/services/chatService";
 import courseService from "../src/services/courseService";
 import enrollmentService from "../src/services/enrollmentService";
 import {
-  AdminOverview,
   AppTab,
   Course,
   CreateCoursePayload,
@@ -65,7 +60,7 @@ export default function Index() {
 }
 
 function AppContent() {
-  const { theme, isDark, toggleTheme } = useTheme();
+  const { theme, isDark, toggleTheme, setPreferredTheme } = useTheme();
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   const [authMode, setAuthMode] = useState<AuthMode>("login");
@@ -77,8 +72,6 @@ function AppContent() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [myEnrollments, setMyEnrollments] = useState<Enrollment[]>([]);
-  const [teacherCourses, setTeacherCourses] = useState<Course[]>([]);
-  const [adminOverview, setAdminOverview] = useState<AdminOverview | null>(null);
 
   const [activeTab, setActiveTab] = useState<AppTab>("catalog");
   const [chatUnread, setChatUnread] = useState(0);
@@ -96,6 +89,7 @@ function AppContent() {
         const { token: savedToken, user: savedUser } = JSON.parse(raw) as { token: string; user: User };
         setToken(savedToken);
         setUser(savedUser);
+        setPreferredTheme(savedUser.tema_preferido);
         setAuthToken(savedToken);
         loadInitialData(savedUser).finally(() => setScreenLoading(false));
       } catch {
@@ -137,12 +131,9 @@ function AppContent() {
       { key: "catalog", label: "Catálogo", icon: "home-outline" },
       { key: "my-courses", label: "Cursos", icon: "book-outline" },
     ];
-    if (user.role === "admin")
-      base.push({ key: "teacher", label: "Professor", icon: "school-outline" });
-    if (user.role === "admin")
-      base.push({ key: "admin", label: "Admin", icon: "shield-checkmark-outline" });
     base.push({ key: "chat", label: "Chat", icon: "chatbubbles-outline", badge: chatUnread || undefined });
     base.push({ key: "profile", label: "Perfil", icon: "person-outline" });
+    base[0].label = "Início";
     return base;
   }, [user]);
 
@@ -150,20 +141,12 @@ function AppContent() {
   const loadInitialData = async (nextUser: User) => {
     setScreenLoading(true);
     try {
-      const [catalog, enrollments, teacher, admin] = await Promise.all([
+      const [catalog, enrollments] = await Promise.all([
         courseService.getAll(),
         enrollmentService.getAll(nextUser.user_id),
-        nextUser.role === "teacher" || nextUser.role === "admin"
-          ? courseService.getProfessorCourses()
-          : Promise.resolve([] as Course[]),
-        nextUser.role === "admin"
-          ? adminService.getAll()
-          : Promise.resolve(null as AdminOverview | null),
       ]);
       setCourses(catalog);
       setMyEnrollments(enrollments);
-      setTeacherCourses(teacher);
-      setAdminOverview(admin);
     } catch (error) {
       handleError(error);
     } finally {
@@ -195,6 +178,7 @@ function AppContent() {
       const response = await authService.login({ email: emailToUse, password: passwordToUse });
       setToken(response.access_token);
       setUser(response.user);
+      setPreferredTheme(response.user.tema_preferido);
       setAuthToken(response.access_token);
       setActiveTab("catalog");
       const sessionUser = {
@@ -208,6 +192,7 @@ function AppContent() {
         cover_image_base64: response.user.cover_image_base64,
         created_at: response.user.created_at,
         active: response.user.active,
+        tema_preferido: response.user.tema_preferido,
       };
       await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ token: response.access_token, user: sessionUser }));
       await loadInitialData(response.user);
@@ -232,7 +217,7 @@ function AppContent() {
   };
 
   const handleOpenCourseById = async (courseId: string) => {
-    const local = [...courses, ...teacherCourses].find((c) => c.course_id === courseId);
+    const local = courses.find((c) => c.course_id === courseId);
     if (local) { setSelectedCourse(local); return; }
     try {
       setSelectedCourse(await courseService.getById(courseId));
@@ -300,7 +285,8 @@ function AppContent() {
     setFeedback("");
     try {
       const updated = await authService.update(payload);
-      setUser(updated);
+        setUser(updated);
+        setPreferredTheme(updated.tema_preferido);
       const updatedUser = {
         user_id: updated.user_id,
         email: updated.email,
@@ -309,6 +295,7 @@ function AppContent() {
         bio: updated.bio,
         profile_image_base64: updated.profile_image_base64,
         cover_image_base64: updated.cover_image_base64,
+        tema_preferido: updated.tema_preferido,
         created_at: updated.created_at,
         active: updated.active,
       };
@@ -326,7 +313,7 @@ function AppContent() {
     AsyncStorage.removeItem(SESSION_KEY);
     setAuthToken(null);
     setToken(""); setUser(null); setCourses([]); setSelectedCourse(null);
-    setMyEnrollments([]); setTeacherCourses([]); setAdminOverview(null);
+    setMyEnrollments([]);
     showFeedback("Sessão encerrada com segurança.");
     setAuthMode("login");
   };
@@ -339,7 +326,8 @@ function AppContent() {
       return (
         <CourseDetailsScreen
           course={selectedCourse}
-          canEnroll={user.role === "student" || user.role === "admin"}
+          canEnroll={user.role === "student"}
+          enrolled={myEnrollments.some((enrollment) => enrollment.course.course_id === selectedCourse.course_id)}
           loading={busy}
           userId={user.user_id}
           onBack={() => setSelectedCourse(null)}
@@ -355,32 +343,17 @@ function AppContent() {
           userId={user.user_id}
           onOpenCourse={handleOpenCourse}
           onRefresh={handleRefreshCatalog}
+          userName={user.username}
+          enrolledCount={myEnrollments.length}
+          completedCount={myEnrollments.filter((e) => e.status === "Concluído").length}
         />
       );
 
     if (activeTab === "my-courses")
       return <MyCoursesScreen enrollments={myEnrollments} userId={user.user_id} onOpenCourse={handleOpenCourseById} />;
 
-    if (activeTab === "teacher")
-      return (
-        <PublishCourseScreen
-          canManage={user.role === "teacher" || user.role === "admin"}
-          userId={Number(user.user_id)}
-          courses={teacherCourses}
-          loading={busy}
-          onCreateCourse={handleCreateCourse}
-          onOpenCourse={handleOpenCourse}
-          onDeleteCourse={handleDeleteCourse}
-        />
-      );
-
-    if (activeTab === "admin")
-      return <AdminScreen isAdmin={user.role === "admin"} data={adminOverview} />;
-
     if (activeTab === "chat")
-      return user.role === "teacher" || user.role === "admin"
-        ? <TeacherChatScreen userName={user.username} />
-        : <StudentTeacherChatScreen userName={user.username} />;
+      return <StudentTeacherChatScreen userName={user.username} />;
 
     return (
       <ProfileScreen
@@ -391,7 +364,6 @@ function AppContent() {
         feedback={feedback}
         enrolledCount={myEnrollments.length}
         completedCount={myEnrollments.filter((e) => e.status === "Concluído").length}
-        studiedHours={myEnrollments.reduce((acc, e) => acc + (e.course.carga_horaria || 0), 0)}
       />
     );
   };
@@ -430,7 +402,7 @@ function AppContent() {
               <View style={styles.headerCenter}>
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}>
                   <Text style={[styles.appName, { color: "#ffffff" }]}>CursiFy</Text>
-                  <Image source={require("../assets/images/logopreta.jpg")} style={{ width: 58, height: 58, borderRadius: 29, borderWidth: 2, borderColor: "#0EA5E9", backgroundColor: "#0EA5E9" }} />
+                  <Image source={require("../assets/images/logoCursiFy.png")} resizeMode="contain" style={{ width: 58, height: 58 }} />
                 </View>
               </View>
               <View style={styles.headerSide} />
